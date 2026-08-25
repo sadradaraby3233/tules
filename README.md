@@ -195,7 +195,7 @@ Do not put another tool command in the final response unless more work is requir
 | --- | --- | --- |
 | Read a small complete text file | `read_file` | Returns raw content without line prefixes |
 | Quote exact numbered lines for an edit | `view` | Stable `line | content` presentation |
-| Claude-style paginated numbered read | `Read` | `offset`, `limit`, total and truncation metadata |
+| Paginated numbered read | `Read` | `offset`, `limit`, total and truncation metadata |
 | Find filenames by wildcard/path shape | `Glob` | Supports `**`, extensions, and directory patterns |
 | Find filenames by simple name fragment | `list_files` | Fast, forgiving substring lookup |
 | Find a literal string | `search` | No regex escaping needed |
@@ -363,7 +363,7 @@ precise block for strict replacement.
 
 ### `Read` / `read`
 
-Claude-compatible numbered file reader. Action matching is case-insensitive.
+Advanced numbered file reader. Action matching is case-insensitive.
 
 **Input**
 
@@ -388,7 +388,7 @@ endedit
 - `start_line`, `num_lines`, `total_lines`,
 - `truncated`: whether more lines remain after this window.
 
-**Use when:** paging through large files or following a Claude Code style workflow.
+**Use when:** paging through large files.
 
 ## 10. File discovery and search commands
 
@@ -507,7 +507,7 @@ with `view` before editing.
 
 ### `Grep` / `grep`
 
-Rich Claude-compatible regex search.
+Rich regular-expression search.
 
 **Input**
 
@@ -588,7 +588,7 @@ occurrence count. No write occurs.
 
 ### `Edit` / `edit` (compatibility alias)
 
-Claude-style field spelling for universal `replace`, including all universal fallback levels.
+Alternative field spelling for universal `replace`, including all universal fallback levels.
 
 **Input**
 
@@ -618,7 +618,7 @@ rejected unless `replace_all` is true.
 
 ### `replace` — universal replacement engine
 
-This is the one canonical replacement tool. It accepts both native and Claude-style field names and automatically tries the safest strategies in this order:
+This is the one canonical replacement tool. It accepts both all supported field-name variants and automatically tries the safest strategies in this order:
 
 1. unique exact text,
 2. straight/curly quote-normalized text while preserving the file typography,
@@ -1134,7 +1134,7 @@ irrelevant directories including:
 - `.tules` and `.tules_backups`.
 
 Native workspace-wide text search focuses on recognized text extensions and files up to
-4 MiB. Claude-compatible `Glob`/`Grep` traverse non-skipped files and decode unreadable
+4 MiB. Advanced `Glob`/`Grep` traverse non-skipped files and decode unreadable
 bytes safely for searching.
 
 ## 19. Backups and undo
@@ -1385,9 +1385,8 @@ tules/
   agent.py          dispatch and automatic post-edit review
   registry.py       command registration and argument helpers
   commands/
-    claude_files.py Claude-compatible Read/Write/Edit/Glob/Grep/NotebookEdit
+    file_tools.py  all reads, writes, search, notebooks, backups, and memory
     edits.py        strict, flexible, contextual, smart, and line edits
-    files.py        reads, file lifecycle, undo, and memory
     review.py       analysis, review, and batch validation
     search.py       native searches and dependency checks
     shell.py        workspace shell execution

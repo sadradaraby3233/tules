@@ -1,4 +1,4 @@
-"""Claude-compatible Bash and PowerShell execution inside the workspace."""
+"""Bash and PowerShell execution inside the workspace."""
 
 import shutil
 import subprocess

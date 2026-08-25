@@ -1,4 +1,4 @@
-"""Universal replacement cascade and Claude-compatible shell tools."""
+"""Universal replacement cascade and cross-platform shell tools."""
 
 from unittest.mock import patch
 

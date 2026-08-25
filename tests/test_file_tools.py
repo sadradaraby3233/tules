@@ -1,7 +1,7 @@
 import json
 
 
-def test_read_uses_claude_offset_limit_and_line_numbers(agent):
+def test_read_uses_offset_limit_and_line_numbers(agent):
 	result = agent.run({"action": "Read", "file_path": "notes.md", "offset": 2, "limit": 1})
 	assert result.success
 	assert result.details["content"] == "     2→alpha"

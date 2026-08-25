@@ -32,6 +32,8 @@ class Editor:
 	def __init__(self, workspace: Workspace):
 		self.workspace = workspace
 
+	# Universal string replacement -------------------------------------------------
+
 	def replace_best(
 		self,
 		relpath: str,
@@ -76,7 +78,7 @@ class Editor:
 					replace_all=True,
 				)
 			if match_id is not None:
-				return self.replace_occurrence(relpath, actual, replace, match_id, reason)
+				return self._replace_occurrence(relpath, actual, replace, match_id, reason)
 			if len(offsets) == 1:
 				styled = preserve_quote_style(search, actual, replace)
 				return self._apply(
@@ -104,7 +106,7 @@ class Editor:
 				f"AMBIGUOUS: {len(offsets)} exact matches. Add context_before/context_after, "
 				"set replace_all, or pass match_id.",
 				occurrences=len(offsets),
-				candidates=self.find_occurrences(relpath, actual),
+				candidates=self._occurrence_candidates(relpath, actual),
 			)
 
 		# Whole-line whitespace matching, requiring a unique candidate.
@@ -227,50 +229,17 @@ class Editor:
 		body = reindent(replace.split("\n"), search_indent, file_indent)
 		body = adapt_indent_style(body, lines[first:last], file_indent)
 		updated = "\n".join(lines[:first] + body + lines[last:])
-		return self._apply(
-			document,
-			updated,
-			reason,
-			match_level=level,
-			confidence=round(confidence, 4),
-			matched_lines=f"{first + 1}-{last}",
-			occurrences=1,
-		)
+		details = {
+			"match_level": level,
+			"confidence": round(confidence, 4),
+			"matched_lines": f"{first + 1}-{last}",
+			"occurrences": 1,
+		}
+		if file_indent != search_indent:
+			details["indent_adjusted"] = f"{search_indent!r} -> {file_indent!r}"
+		return self._apply(document, updated, reason, **details)
 
-	def replace_first(self, relpath: str, search: str, replace: str, reason: str) -> Result:
-		document = self._open(relpath, search)
-		if search not in document.text:
-			raise MatchError(
-				"NOT_FOUND: search string is absent from the file",
-				closest_match=describe_closest(document.text, search),
-			)
-		return self._apply(document, document.text.replace(search, replace, 1), reason)
-
-	def replace_unique(self, relpath: str, search: str, replace: str, reason: str) -> Result:
-		document = self._open(relpath, search)
-		count = document.text.count(search)
-		if count == 0:
-			raise MatchError(
-				"NOT_FOUND: old_str is absent. Use the view action to copy the exact text.",
-				closest_match=describe_closest(document.text, search),
-			)
-		if count > 1:
-			raise MatchError(
-				f"NOT_UNIQUE: old_str occurs {count} times. Add context or use replace_by_line.",
-				occurrences=count,
-			)
-		return self._apply(document, document.text.replace(search, replace, 1), reason)
-
-	def replace_all(self, relpath: str, search: str, replace: str, reason: str) -> Result:
-		document = self._open(relpath, search)
-		count = document.text.count(search)
-		if count == 0:
-			raise MatchError("NOT_FOUND: search string is absent from the file")
-		return self._apply(
-			document, document.text.replace(search, replace), reason, occurrences=count
-		)
-
-	def find_occurrences(self, relpath: str, search: str) -> List[Dict[str, Any]]:
+	def _occurrence_candidates(self, relpath: str, search: str) -> List[Dict[str, Any]]:
 		document = self._open(relpath, search)
 		lines = document.lines
 		found: List[Dict[str, Any]] = []
@@ -285,7 +254,7 @@ class Editor:
 			)
 		return found
 
-	def replace_occurrence(
+	def _replace_occurrence(
 		self, relpath: str, search: str, replace: str, index: int, reason: str
 	) -> Result:
 		document = self._open(relpath, search)
@@ -295,6 +264,8 @@ class Editor:
 		offset = offsets[index]
 		text = document.text[:offset] + replace + document.text[offset + len(search) :]
 		return self._apply(document, text, reason, match_id=index)
+
+	# Explicit line operations -----------------------------------------------------
 
 	def replace_lines(
 		self, relpath: str, first: int, last: int, replace: str, reason: str
@@ -321,105 +292,7 @@ class Editor:
 		text = "\n".join(lines[: first - 1] + lines[min(last, len(lines)) :])
 		return self._apply(document, text, reason, deleted_lines=f"{first}-{min(last, len(lines))}")
 
-	def replace_flexible(self, relpath: str, search: str, replace: str, reason: str) -> Result:
-		"""Exact, then whitespace agnostic, then token based, then AST based."""
-		document = self._open(relpath, search)
-		text = document.text
-		if search in text:
-			return self._apply(
-				document, text.replace(search, replace, 1), reason, match_level="exact"
-			)
-
-		stripped = [line.strip() for line in search.split("\n") if line.strip()]
-		lines = document.lines
-		for index in range(len(lines) - len(stripped) + 1):
-			if [line.strip() for line in lines[index : index + len(stripped)]] == stripped:
-				block = "\n".join(lines[index : index + len(stripped)])
-				return self._apply(
-					document, text.replace(block, replace, 1), reason, match_level="whitespace"
-				)
-
-		matches = self._token_matches(text, search)
-		if len(matches) > 1:
-			raise MatchError(
-				f"AMBIGUOUS: {len(matches)} token matches. Add context or use replace_by_line.",
-				first_match_line=text.count("\n", 0, matches[0].start()) + 1,
-			)
-		if len(matches) == 1:
-			span = matches[0]
-			return self._apply(
-				document,
-				text[: span.start()] + replace + text[span.end() :],
-				reason,
-				match_level="tokens",
-			)
-
-		segment = self._definition_source(document, search)
-		if segment:
-			return self._apply(
-				document, text.replace(segment, replace, 1), reason, match_level="ast"
-			)
-
-		raise MatchError(
-			"SEARCH_FAILED: could not locate the search block",
-			closest_match=describe_closest(text, search),
-		)
-
-	def replace_in_context(
-		self,
-		relpath: str,
-		search: str,
-		replace: str,
-		context_before: Sequence[str] = (),
-		context_after: Sequence[str] = (),
-		threshold: float = 0.85,
-		reason: str = "Context-aware replace",
-	) -> Result:
-		"""Locate the block by similarity, anchored on the surrounding lines."""
-		document = self._open(relpath, search)
-		if search in document.text:
-			return self._apply(
-				document,
-				document.text.replace(search, replace, 1),
-				reason,
-				confidence=1.0,
-				match_level="exact",
-			)
-
-		lines = document.lines
-		search_lines = search.split("\n")
-		first, last, confidence = locate_block(
-			lines, search_lines, as_lines(context_before), as_lines(context_after)
-		)
-		if first < 0:
-			raise MatchError(
-				"NO_MATCH: search block not found anywhere in the file",
-				closest_match=describe_closest(document.text, search),
-			)
-
-		required = self._required_confidence(search_lines, threshold)
-		if confidence < required:
-			raise MatchError(
-				f"LOW_CONFIDENCE: {confidence:.0%} (need {required:.0%})"
-				f" at lines {first + 1}-{last}",
-				confidence=round(confidence, 4),
-				matched_block="\n".join(lines[first:last]),
-				closest_match=describe_closest(document.text, search),
-				hint="Add context_before/context_after or lower confidence_threshold.",
-			)
-
-		file_indent = common_indent(lines[first:last])
-		search_indent = common_indent(search_lines)
-		body = reindent(replace.split("\n"), search_indent, file_indent)
-		text = "\n".join(lines[:first] + body + lines[last:])
-		details: Dict[str, Any] = {
-			"confidence": round(confidence, 4),
-			"matched_lines": f"{first + 1}-{last}",
-			"match_level": "context" if (context_before or context_after) else "fuzzy",
-		}
-		if file_indent != search_indent:
-			details["indent_adjusted"] = f"{search_indent!r} -> {file_indent!r}"
-		return self._apply(document, text, reason, **details)
+	# Preview and file lifecycle ---------------------------------------------------
 
 	def preview(self, relpath: str, search: str, replace: str) -> Result:
 		document = self._open(relpath, search)
@@ -465,6 +338,8 @@ class Editor:
 		path = self.workspace.resolve(relpath)
 		backup = self.workspace.restore(path)
 		return Result.ok(f"Reverted {relpath} to {backup.name}")
+
+	# Shared mutation safeguards ---------------------------------------------------
 
 	def _open(self, relpath: str, search: Optional[str] = None) -> Document:
 		if search is not None and not search.strip():
@@ -535,6 +410,9 @@ class Editor:
 				if segment and segment in document.text:
 					return segment
 		return None
+
+
+# Pure replacement helpers ------------------------------------------------------
 
 
 def apply_substring(content: str, old: str, new: str, replace_all: bool) -> str:

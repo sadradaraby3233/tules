@@ -24,7 +24,7 @@ def _first_text(payload: Dict[str, Any], names, default=None) -> str:
 
 @command("replace", "Universally locate and safely replace text", mutates=True)
 def replace(agent, payload: Dict[str, Any]) -> Result:
-	"""Accept every historical and Claude-style replacement parameter spelling."""
+	"""Accept every supported replacement parameter spelling."""
 	relpath = _first_text(payload, ("file", "file_path"))
 	search = _first_text(payload, ("old_string", "old_str", "search"))
 	replacement = _first_text(payload, ("new_string", "new_str", "replace_with"), "")

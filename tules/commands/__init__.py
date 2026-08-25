@@ -1,10 +1,12 @@
 """Importing this package registers every action in the registry."""
 
-from . import claude_files, edits, files, review, search, shell
+from . import file_tools, edits, review, search, shell
 from ..registry import REGISTRY, alias
 
+# Public compatibility aliases live in one place so command modules stay focused.
 alias("help", "list_actions")
-# Historical replace actions remain accepted, but all use one universal engine.
+
+# Older replace names remain accepted, but all use one universal engine.
 for old_name in (
 	"edit",
 	"str_replace",
@@ -16,4 +18,4 @@ for old_name in (
 ):
 	alias(old_name, "replace")
 
-__all__ = ["REGISTRY", "claude_files", "edits", "files", "review", "search", "shell"]
+__all__ = ["REGISTRY", "edits", "file_tools", "review", "search", "shell"]

@@ -1,8 +1,4 @@
-"""Claude Code compatible Read/Write/Glob/Grep and NotebookEdit tools.
-
-These actions accept Claude Code's public parameter names while retaining TULES'
-workspace confinement, backups, newline preservation, and Python syntax guard.
-"""
+"""Advanced file reading, writing, discovery, search, and notebook tools."""
 
 import fnmatch
 import json
@@ -31,6 +27,11 @@ TYPE_SUFFIXES = {
 	"markdown": (".md", ".markdown"),
 	"yaml": (".yaml", ".yml"),
 }
+
+
+# ---------------------------------------------------------------------------
+# Shared path and traversal helpers
+# ---------------------------------------------------------------------------
 
 
 def _path(payload: Dict[str, Any], *names: str) -> str:
@@ -63,7 +64,12 @@ def _iter_files(agent, base: Path) -> Iterable[Path]:
 			yield path
 
 
-@command("read", "Claude-compatible file reader with offset and limit")
+# ---------------------------------------------------------------------------
+# Text file input and output
+# ---------------------------------------------------------------------------
+
+
+@command("read", "Read a numbered window of a text file")
 def read(agent, payload: Dict[str, Any]) -> Result:
 	document = agent.workspace.load(_path(payload, "file_path", "file"), strict=False)
 	lines = document.lines
@@ -84,7 +90,7 @@ def read(agent, payload: Dict[str, Any]) -> Result:
 	)
 
 
-@command("write", "Claude-compatible file create or overwrite", mutates=True)
+@command("write", "Create or fully overwrite a file", mutates=True)
 def write(agent, payload: Dict[str, Any]) -> Result:
 	relpath = _path(payload, "file_path", "file")
 	content = text(payload, "content", "")
@@ -114,7 +120,12 @@ def write(agent, payload: Dict[str, Any]) -> Result:
 	)
 
 
-@command("glob", "Claude-compatible glob search")
+# ---------------------------------------------------------------------------
+# File discovery and content search
+# ---------------------------------------------------------------------------
+
+
+@command("glob", "Find files using a glob pattern")
 def glob(agent, payload: Dict[str, Any]) -> Result:
 	pattern = text(payload, "pattern")
 	base = _relative_base(agent, payload.get("path"))
@@ -145,7 +156,7 @@ def _glob_match(path: Path, base: Path, patterns: str) -> bool:
 	return False
 
 
-@command("grep", "Claude-compatible regex search with content, file and count modes")
+@command("grep", "Advanced regex search with content, file and count modes")
 def grep(agent, payload: Dict[str, Any]) -> Result:
 	pattern = text(payload, "pattern", payload.get("search"))
 	try:
@@ -214,7 +225,12 @@ def grep(agent, payload: Dict[str, Any]) -> Result:
 	)
 
 
-@command("notebook_edit", "Claude-compatible Jupyter notebook cell editor", mutates=True)
+# ---------------------------------------------------------------------------
+# Structured notebook editing
+# ---------------------------------------------------------------------------
+
+
+@command("notebook_edit", "Insert, replace, or delete a Jupyter notebook cell", mutates=True)
 def notebook_edit(agent, payload: Dict[str, Any]) -> Result:
 	relpath = _path(payload, "notebook_path", "file")
 	if not relpath.lower().endswith(".ipynb"):
@@ -261,3 +277,79 @@ def notebook_edit(agent, payload: Dict[str, Any]) -> Result:
 		edit_mode=mode,
 	)
 	return result
+
+
+# ---------------------------------------------------------------------------
+# Simple reads, file lifecycle, backups, and persistent notes
+# ---------------------------------------------------------------------------
+
+MEMORY_FILES = {"scratchpad": "scratchpad.md", "todo": "todo.md"}
+PREVIEW_LINES = 400
+
+
+@command("read_file", "Read a file, optionally a line range")
+def read_file(agent, payload: Dict[str, Any]) -> Result:
+	document = agent.workspace.load(text(payload, "file"), strict=False)
+	lines = document.lines
+	first = payload.get("start_line")
+	last = payload.get("end_line")
+	if first is None and last is None:
+		return Result.ok(
+			f"Read {document.relpath}", content=document.text, total_lines=len(lines))
+	first = number(payload, "start_line", 1)
+	last = number(payload, "end_line", len(lines))
+	body = "\n".join(lines[max(0, first - 1):min(len(lines), last)])
+	return Result.ok(
+		f"Read lines {first}-{last} of {document.relpath}",
+		content=body, total_lines=len(lines))
+
+
+@command("view", "Read a file with line numbers, ready to quote back")
+def view(agent, payload: Dict[str, Any]) -> Result:
+	document = agent.workspace.load(text(payload, "file"), strict=False)
+	lines = document.lines
+	first = number(payload, "start_line", 1)
+	last = number(payload, "end_line", min(len(lines), first + PREVIEW_LINES - 1))
+	window = lines[max(0, first - 1):min(len(lines), last)]
+	body = "\n".join(f"{first + offset:4d} | {line}" for offset, line in enumerate(window))
+	return Result.ok(
+		f"Viewed {document.relpath} lines {first}-{first + len(window) - 1}",
+		content=body, total_lines=len(lines))
+
+
+@command("list_files", "List workspace files matching a name fragment")
+def list_files(agent, payload: Dict[str, Any]) -> Result:
+	matches = agent.searcher.find_files(payload.get("pattern", ""))
+	return Result.ok(f"Found {len(matches)} files", files=matches)
+
+
+@command("create_file", "Create a new file", mutates=True)
+def create_file(agent, payload: Dict[str, Any]) -> Result:
+	return agent.editor.create(text(payload, "file"), text(payload, "content", ""))
+
+
+@command("delete_file", "Delete a file after backing it up", mutates=True)
+def delete_file(agent, payload: Dict[str, Any]) -> Result:
+	return agent.editor.remove(text(payload, "file"))
+
+
+@command("undo", "Restore a file from its most recent backup", mutates=True)
+def undo(agent, payload: Dict[str, Any]) -> Result:
+	return agent.editor.restore(text(payload, "file"))
+
+
+@command("memory", "Append to or read the agent scratchpad")
+def memory(agent, payload: Dict[str, Any]) -> Result:
+	target = text(payload, "target", "scratchpad")
+	if target not in MEMORY_FILES:
+		raise TulesError(f"Unknown memory target: {target}", available=sorted(MEMORY_FILES))
+	path = agent.workspace.state_file(MEMORY_FILES[target])
+	mode = text(payload, "action_type", "read")
+	if mode == "read":
+		body = path.read_text(encoding="utf-8") if path.exists() else ""
+		return Result.ok(f"Read {path.name}", content=body)
+	if mode == "write":
+		with path.open("a", encoding="utf-8") as handle:
+			handle.write(text(payload, "content") + "\n")
+		return Result.ok(f"Appended to {path.name}")
+	raise TulesError("'action_type' must be 'read' or 'write'")
