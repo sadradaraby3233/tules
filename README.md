@@ -54,8 +54,11 @@ DETAILS:
 | Action | Writes | What it does |
 | --- | --- | --- |
 | `read_file` | | Read a file, optionally `start_line`/`end_line` |
+| `Read` (`read`) | | Claude-compatible numbered read with `file_path`, `offset`, and `limit` |
 | `view` | | Read a file with line numbers, ready to quote back |
 | `list_files` | | List files matching a name fragment |
+| `Glob` (`glob`) | | Claude-compatible recursive glob, newest files first |
+| `Grep` (`grep`) | | Claude-compatible regex search with filters, context, modes, and pagination |
 | `search` | | Find a literal string (`case_sensitive`, `whole_word`) |
 | `search_regex` | | Find a regular expression |
 | `search_fuzzy` | | Find similar lines (`threshold`) |
@@ -79,6 +82,9 @@ DETAILS:
 | `delete` | yes | Delete an inclusive line range |
 | `smart_replace` | yes | Replace when unique, otherwise list the candidates |
 | `confirm_smart_replace` | yes | Replace the candidate with the given `match_id` |
+| `Edit` (`edit`) | yes | Claude-compatible unique/replace-all edit with smart quote matching |
+| `Write` (`write`) | yes | Claude-compatible create or full-file overwrite |
+| `NotebookEdit` (`notebook_edit`) | yes | Insert, replace, or delete Jupyter notebook cells |
 | `create_file` | yes | Create a new file |
 | `delete_file` | yes | Delete a file, after backing it up |
 | `undo` | yes | Restore a file from its most recent backup |

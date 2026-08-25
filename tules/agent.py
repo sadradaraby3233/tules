@@ -55,7 +55,7 @@ class Agent:
 		return [self.run(payload) for payload in payloads]
 
 	def _append_review(self, result: Result, payload: Dict[str, Any]) -> None:
-		relpath = payload.get("file")
+		relpath = payload.get("file") or payload.get("file_path") or payload.get("notebook_path")
 		if not isinstance(relpath, str) or not relpath:
 			return
 		try:
