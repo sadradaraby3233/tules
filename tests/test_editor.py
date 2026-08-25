@@ -49,8 +49,8 @@ def test_identical_replacement_is_rejected(editor):
 def test_replace_flexible_matches_across_indentation(editor, workspace):
 	result = editor.replace_best(
 		"sample.py",
-		"def build(self):\n\t\t\t\treturn greet(\"widget\")",
-		"\tdef build(self):\n\t\treturn greet(\"gadget\")",
+		'def build(self):\n\t\t\t\treturn greet("widget")',
+		'\tdef build(self):\n\t\treturn greet("gadget")',
 		"test",
 	)
 	assert result.details["match_level"] == "whitespace"
@@ -66,8 +66,12 @@ def test_replace_flexible_falls_back_to_the_ast(editor, workspace):
 
 def test_replace_in_context_tolerates_smart_quotes(editor, workspace):
 	result = editor.replace_best(
-		"sample.py", "\t\treturn greet(“widget”)", "\t\treturn greet(\"gadget\")",
-		"test", threshold=0.6)
+		"sample.py",
+		"\t\treturn greet(“widget”)",
+		'\t\treturn greet("gadget")',
+		"test",
+		threshold=0.6,
+	)
 	assert result.success
 	assert "gadget" in read(workspace)
 
@@ -82,12 +86,13 @@ def test_replace_in_context_refuses_a_weak_match(editor):
 def test_replace_in_context_reindents_the_replacement(editor, workspace):
 	result = editor.replace_best(
 		"sample.py",
-		"def build(self):\n        return greet(\"widget\")",
-		"def build(self):\n\treturn greet(\"gadget\")",
-		"test", threshold=0.6,
+		'def build(self):\n        return greet("widget")',
+		'def build(self):\n\treturn greet("gadget")',
+		"test",
+		threshold=0.6,
 	)
 	assert result.details["indent_adjusted"]
-	assert "\tdef build(self):\n\t\treturn greet(\"gadget\")" in read(workspace)
+	assert '\tdef build(self):\n\t\treturn greet("gadget")' in read(workspace)
 
 
 def test_replace_lines_swaps_an_inclusive_range(editor, workspace):
@@ -126,7 +131,7 @@ def test_remove_backs_the_file_up_first(editor, workspace):
 def test_preview_does_not_touch_the_file(editor, workspace):
 	before = read(workspace)
 	result = editor.preview("sample.py", "hello", "hi")
-	assert "-\treturn f\"hello {name}\"" in result.details["diff"]
+	assert '-\treturn f"hello {name}"' in result.details["diff"]
 	assert read(workspace) == before
 
 

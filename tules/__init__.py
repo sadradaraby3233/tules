@@ -9,6 +9,15 @@ from .workspace import Workspace
 
 __version__ = "2.0.0"
 __all__ = [
-	"Agent", "Editor", "MatchError", "Result", "SearchResult", "Searcher",
-	"SyntaxGuardError", "TulesError", "Workspace", "WorkspaceError", "__version__",
+	"Agent",
+	"Editor",
+	"MatchError",
+	"Result",
+	"SearchResult",
+	"Searcher",
+	"SyntaxGuardError",
+	"TulesError",
+	"Workspace",
+	"WorkspaceError",
+	"__version__",
 ]

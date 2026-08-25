@@ -86,8 +86,13 @@ def test_universal_replace_resolves_ambiguity_with_context(agent):
 	path = agent.root / "context-choice.txt"
 	path.write_text("first\nsame\nsecond\nsame\nlast\n")
 	result = replace(
-		agent, "context-choice.txt", "same", "changed",
-		context_before="second", context_after="last")
+		agent,
+		"context-choice.txt",
+		"same",
+		"changed",
+		context_before="second",
+		context_after="last",
+	)
 	assert result.success
 	assert result.details["match_level"] == "context"
 	assert path.read_text() == "first\nsame\nsecond\nchanged\nlast\n"

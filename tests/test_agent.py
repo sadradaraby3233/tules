@@ -58,33 +58,48 @@ def test_help_is_an_alias_for_list_actions(agent):
 
 
 def test_str_replace_edits_and_reviews(agent):
-	result = agent.run({
-		"action": "str_replace", "file": "sample.py",
-		"old_str": "import os\n", "new_str": ""})
+	result = agent.run(
+		{"action": "str_replace", "file": "sample.py", "old_str": "import os\n", "new_str": ""}
+	)
 	assert result.success
 	assert "backup" in result.details
 
 
 def test_post_edit_review_warns_about_unused_imports(agent):
-	result = agent.run({
-		"action": "str_replace", "file": "sample.py",
-		"old_str": "class Widget:", "new_str": "class Gadget:"})
+	result = agent.run(
+		{
+			"action": "str_replace",
+			"file": "sample.py",
+			"old_str": "class Widget:",
+			"new_str": "class Gadget:",
+		}
+	)
 	assert any("unused import" in warning for warning in result.warnings)
 
 
 def test_syntax_guard_surfaces_the_blast_radius(agent):
-	result = agent.run({
-		"action": "str_replace", "file": "sample.py",
-		"old_str": "def greet(name):", "new_str": "def greet(name:"})
+	result = agent.run(
+		{
+			"action": "str_replace",
+			"file": "sample.py",
+			"old_str": "def greet(name):",
+			"new_str": "def greet(name:",
+		}
+	)
 	assert not result.success
 	assert result.details["blast_radius"]
 
 
 def test_validate_batch_checks_every_command(agent):
-	result = agent.run({"action": "validate_batch", "commands": [
-		{"action": "str_replace", "file": "sample.py", "old_str": "greet"},
-		{"action": "str_replace", "file": "sample.py", "old_str": "absent"},
-	]})
+	result = agent.run(
+		{
+			"action": "validate_batch",
+			"commands": [
+				{"action": "str_replace", "file": "sample.py", "old_str": "greet"},
+				{"action": "str_replace", "file": "sample.py", "old_str": "absent"},
+			],
+		}
+	)
 	assert not result.success
 	assert result.details["checks"][0]["valid"] is False
 	assert "NOT_UNIQUE" in result.details["checks"][0]["reason"]
@@ -97,7 +112,7 @@ def test_run_is_refused_when_shell_is_disabled(agent):
 
 
 def test_run_executes_in_the_workspace_root(agent):
-	result = agent.run({"action": "run", "command": "python -c \"import os;print(os.getcwd())\""})
+	result = agent.run({"action": "run", "command": 'python -c "import os;print(os.getcwd())"'})
 	assert result.success
 	assert str(agent.root) in result.details["stdout"]
 
@@ -109,18 +124,18 @@ def test_memory_round_trip(agent):
 
 
 def test_undo_restores_the_previous_version(agent):
-	agent.run({
-		"action": "str_replace", "file": "notes.md",
-		"old_str": "alpha", "new_str": "omega"})
+	agent.run({"action": "str_replace", "file": "notes.md", "old_str": "alpha", "new_str": "omega"})
 	assert agent.run({"action": "undo", "file": "notes.md"}).success
 	assert "alpha" in (agent.root / "notes.md").read_text(encoding="utf-8")
 
 
 def test_batch_runs_every_command(agent):
-	results = agent.run_batch([
-		{"action": "read_file", "file": "notes.md"},
-		{"action": "read_file", "file": "missing.md"},
-	])
+	results = agent.run_batch(
+		[
+			{"action": "read_file", "file": "notes.md"},
+			{"action": "read_file", "file": "missing.md"},
+		]
+	)
 	assert [item.success for item in results] == [True, False]
 
 
@@ -150,6 +165,7 @@ def test_monitor_ignores_its_own_reply(agent):
 
 
 def test_monitor_ignores_unrelated_clipboard_text(agent):
-	monitor = ClipboardMonitor(agent, clipboard=FakeClipboard("just a copied word"),
-		notify=lambda: None)
+	monitor = ClipboardMonitor(
+		agent, clipboard=FakeClipboard("just a copied word"), notify=lambda: None
+	)
 	assert monitor.poll() is None

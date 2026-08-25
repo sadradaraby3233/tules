@@ -26,7 +26,7 @@ def test_carve_json_ignores_braces_inside_strings():
 
 
 def test_carve_json_finds_an_array():
-	assert carve_json('text [1, 2] more') == "[1, 2]"
+	assert carve_json("text [1, 2] more") == "[1, 2]"
 
 
 def test_repair_drops_trailing_commas():
@@ -43,12 +43,15 @@ def test_decode_wraps_a_single_object():
 
 def test_decode_keeps_an_array():
 	assert decode('[{"action": "help"}, {"action": "analyze"}]') == [
-		{"action": "help"}, {"action": "analyze"}]
+		{"action": "help"},
+		{"action": "analyze"},
+	]
 
 
 def test_decode_repairs_a_broken_payload():
 	assert decode('{"action": "help", "note": "line\nbreak",}') == [
-		{"action": "help", "note": "line\nbreak"}]
+		{"action": "help", "note": "line\nbreak"}
+	]
 
 
 def test_decode_rejects_a_scalar():

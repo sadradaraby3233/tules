@@ -17,8 +17,13 @@ BANNER = "=" * 60
 class ClipboardMonitor:
 	"""Polls the clipboard, runs what it finds, and never exits on a bad payload."""
 
-	def __init__(self, agent: Agent, clipboard: Optional[Clipboard] = None,
-			notify: Callable[[], None] = beep, verbose: bool = False):
+	def __init__(
+		self,
+		agent: Agent,
+		clipboard: Optional[Clipboard] = None,
+		notify: Callable[[], None] = beep,
+		verbose: bool = False,
+	):
 		self.agent = agent
 		self.clipboard = clipboard or Clipboard()
 		self.notify = notify

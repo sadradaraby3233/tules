@@ -53,7 +53,10 @@ def test_summarize_counts_lines_and_symbols(workspace):
 	summary = CodeAnalyzer().summarize(workspace.load("sample.py"))
 	assert summary["total_lines"] == 11
 	assert {item["name"] for item in summary["symbols"] if item["kind"] != "import"} == {
-		"greet", "Widget", "build"}
+		"greet",
+		"Widget",
+		"build",
+	}
 
 
 def test_extract_symbols_handles_javascript(workspace):
@@ -70,7 +73,8 @@ def test_review_flags_an_unused_import(reviewer, workspace):
 
 def test_review_keeps_an_import_that_is_used(reviewer, workspace):
 	(workspace.root / "used.py").write_text(
-		"import json\n\n\ndef dump(x):\n\treturn json.dumps(x)\n", encoding="utf-8")
+		"import json\n\n\ndef dump(x):\n\treturn json.dumps(x)\n", encoding="utf-8"
+	)
 	assert reviewer.review("used.py") == []
 
 
@@ -82,14 +86,16 @@ def test_review_reports_a_syntax_error(reviewer, workspace):
 
 def test_review_flags_a_redefinition(reviewer, workspace):
 	(workspace.root / "twice.py").write_text(
-		"def f():\n\tpass\n\n\ndef f():\n\tpass\n", encoding="utf-8")
+		"def f():\n\tpass\n\n\ndef f():\n\tpass\n", encoding="utf-8"
+	)
 	assert "Redefinition of f" in reviewer.review("twice.py")[0]["message"]
 
 
 def test_review_allows_the_same_method_name_in_two_classes(reviewer, workspace):
 	(workspace.root / "pair.py").write_text(
 		"class A:\n\tdef run(self):\n\t\tpass\n\n\nclass B:\n\tdef run(self):\n\t\tpass\n",
-		encoding="utf-8")
+		encoding="utf-8",
+	)
 	assert reviewer.review("pair.py") == []
 
 
@@ -101,7 +107,8 @@ def test_find_duplicates_across_files(reviewer, workspace):
 
 def test_find_dependents_detects_an_import(reviewer, workspace):
 	(workspace.root / "main.py").write_text(
-		"import sample\n\nsample.greet('x')\n", encoding="utf-8")
+		"import sample\n\nsample.greet('x')\n", encoding="utf-8"
+	)
 	dependents = reviewer.find_dependents("sample.py")
 	assert dependents[0]["file"] == "main.py"
 

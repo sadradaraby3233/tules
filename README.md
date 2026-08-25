@@ -257,8 +257,10 @@ outside paths, or resolving symlinks is rejected.
 ### Backups
 
 Existing files are copied under `.tules_backups/` before mutation. Directory structure
-is mirrored and filenames include timestamps. `undo` restores the latest backup for the
-requested file.
+is mirrored and filenames include timestamps. Rapid edits in the same second receive
+unique backups instead of overwriting history. Writes use an atomic same-directory
+replacement and preserve existing file permissions, so an interrupted write cannot leave
+a partially written target. `undo` restores the latest backup for the requested file.
 
 ### Python syntax guard
 

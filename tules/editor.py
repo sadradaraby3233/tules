@@ -90,17 +90,24 @@ class Editor:
 				)
 			if context_before or context_after:
 				chosen, confidence = self._choose_context_offset(
-					document, offsets, actual, context_before, context_after)
+					document, offsets, actual, context_before, context_after
+				)
 				if chosen is not None and confidence >= threshold:
 					styled = preserve_quote_style(search, actual, replace)
 					end = chosen + len(actual)
-					if not styled and not actual.endswith("\n") and text[end:end + 1] == "\n":
+					if not styled and not actual.endswith("\n") and text[end : end + 1] == "\n":
 						end += 1
 					updated = text[:chosen] + styled + text[end:]
 					line = text.count("\n", 0, chosen) + 1
 					return self._apply(
-						document, updated, reason, match_level="context",
-						confidence=round(confidence, 4), matched_lines=str(line), occurrences=1)
+						document,
+						updated,
+						reason,
+						match_level="context",
+						confidence=round(confidence, 4),
+						matched_lines=str(line),
+						occurrences=1,
+					)
 
 			raise MatchError(
 				f"AMBIGUOUS: {len(offsets)} exact matches. Add context_before/context_after, "
@@ -165,8 +172,14 @@ class Editor:
 			"context" if context_before or context_after else "fuzzy",
 		)
 
-	def _choose_context_offset(self, document: Document, offsets: Sequence[int], actual: str,
-			context_before: Sequence[str], context_after: Sequence[str]):
+	def _choose_context_offset(
+		self,
+		document: Document,
+		offsets: Sequence[int],
+		actual: str,
+		context_before: Sequence[str],
+		context_after: Sequence[str],
+	):
 		"""Score exact duplicate occurrences only by their requested surroundings."""
 		before = as_lines(context_before)
 		after = as_lines(context_after)
@@ -177,10 +190,10 @@ class Editor:
 			last = first + actual.count("\n") + 1
 			parts = []
 			if before:
-				candidate = lines[max(0, first - len(before)):first]
+				candidate = lines[max(0, first - len(before)) : first]
 				parts.append(SequenceMatcher(None, "\n".join(before), "\n".join(candidate)).ratio())
 			if after:
-				candidate = lines[last:last + len(after)]
+				candidate = lines[last : last + len(after)]
 				parts.append(SequenceMatcher(None, "\n".join(after), "\n".join(candidate)).ratio())
 			scored.append((sum(parts) / len(parts) if parts else 0.0, offset))
 		scored.sort(reverse=True)
@@ -317,14 +330,35 @@ class Editor:
 			body += f"\n... ({len(diff) - DIFF_LINES} more lines)"
 		return Result.ok(f"Diff preview for {relpath}", diff=body, diff_lines=len(diff))
 
+	def write_file(self, relpath: str, content: str) -> Result:
+		"""Create or replace a complete file through the standard mutation guards."""
+		path = self.workspace.resolve(relpath)
+		self._guard_syntax(path.suffix, content, relpath)
+		if not path.exists():
+			self.workspace.write(path, content)
+			return Result.ok(
+				f"Created {self.workspace.relativize(path)}",
+				type="create",
+				content=content,
+				original_file=None,
+			)
+		document = self.workspace.load(relpath)
+		if document.text == content:
+			raise TulesError("NO_CHANGE: content is identical to the existing file")
+		backup = self.workspace.save(document, content)
+		return Result.ok(
+			f"Updated {document.relpath}",
+			type="update",
+			content=content,
+			original_file=document.text,
+			backup=self.workspace.relativize(backup),
+		)
+
 	def create(self, relpath: str, content: str) -> Result:
 		path = self.workspace.resolve(relpath)
 		if path.exists():
 			raise WorkspaceError(f"File already exists: {relpath}")
-		if path.suffix == ".py":
-			problem = check_syntax(content, relpath)
-			if problem:
-				raise SyntaxGuardError("SYNTAX_ERROR_PREVENTED", error=problem)
+		self._guard_syntax(path.suffix, content, relpath)
 		self.workspace.write(path, content)
 		return Result.ok(f"Created {relpath}", lines=content.count("\n") + 1)
 
@@ -349,14 +383,7 @@ class Editor:
 	def _apply(self, document: Document, text: str, reason: str, **details: Any) -> Result:
 		if text == document.text:
 			raise TulesError("NO_CHANGE: the replacement is identical to the original")
-		if document.path.suffix == ".py":
-			problem = check_syntax(text, document.relpath)
-			if problem:
-				raise SyntaxGuardError(
-					"SYNTAX_ERROR_PREVENTED",
-					error=problem,
-					blast_radius=quote_error_region(text, problem),
-				)
+		self._guard_syntax(document.path.suffix, text, document.relpath, include_context=True)
 		backup = self.workspace.save(document, text)
 		return Result.ok(
 			f"Edited {document.relpath}",
@@ -364,6 +391,19 @@ class Editor:
 			reason=reason,
 			**details,
 		)
+
+	def _guard_syntax(
+		self, suffix: str, content: str, relpath: str, include_context: bool = False
+	) -> None:
+		if suffix != ".py":
+			return
+		problem = check_syntax(content, relpath)
+		if not problem:
+			return
+		details = {"error": problem}
+		if include_context:
+			details["blast_radius"] = quote_error_region(content, problem)
+		raise SyntaxGuardError("SYNTAX_ERROR_PREVENTED", **details)
 
 	def _check_range(self, first: int, last: int, total: int) -> None:
 		if first < 1 or last < first:

@@ -15,16 +15,27 @@ DESCRIPTION = "Clipboard driven code agent: reads edit: ... endedit blocks and a
 def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(prog="tules", description=DESCRIPTION)
 	parser.add_argument("root", nargs="?", default=".", help="workspace root (default: .)")
-	parser.add_argument("--exec", dest="payload", metavar="FILE",
-		help="run one JSON payload and exit; use - to read stdin")
-	parser.add_argument("--actions", action="store_true",
-		help="list the supported actions and exit")
+	parser.add_argument(
+		"--exec",
+		dest="payload",
+		metavar="FILE",
+		help="run one JSON payload and exit; use - to read stdin",
+	)
+	parser.add_argument(
+		"--actions", action="store_true", help="list the supported actions and exit"
+	)
 	parser.add_argument("--no-shell", action="store_true", help="refuse the run action")
-	parser.add_argument("--no-auto-review", action="store_true",
-		help="do not review a file after editing it")
+	parser.add_argument(
+		"--no-auto-review", action="store_true", help="do not review a file after editing it"
+	)
 	parser.add_argument("--shell-timeout", type=int, default=30, metavar="SECONDS")
-	parser.add_argument("--poll", type=float, default=POLL_SECONDS, metavar="SECONDS",
-		help="clipboard poll interval")
+	parser.add_argument(
+		"--poll",
+		type=float,
+		default=POLL_SECONDS,
+		metavar="SECONDS",
+		help="clipboard poll interval",
+	)
 	parser.add_argument("--verbose", action="store_true", help="log ignored clipboard content")
 	return parser
 

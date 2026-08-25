@@ -5,8 +5,15 @@ from difflib import SequenceMatcher
 from typing import List, Sequence, Tuple
 
 QUOTE_REPLACEMENTS = {
-	"\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
-	"\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2032": "'", "\u2033": '"',
+	"\u2018": "'",
+	"\u2019": "'",
+	"\u201a": "'",
+	"\u201b": "'",
+	"\u201c": '"',
+	"\u201d": '"',
+	"\u201e": '"',
+	"\u2032": "'",
+	"\u2033": '"',
 }
 INVISIBLE = ("\u200b", "\u200c", "\u200d", "\ufeff")
 TAB_WIDTH = 4
@@ -45,7 +52,7 @@ def reindent(lines: Sequence[str], source: str, target: str) -> List[str]:
 		body = line.lstrip()
 		indent = line[: len(line) - len(body)]
 		if indent.startswith(source):
-			shifted.append(target + indent[len(source):] + body)
+			shifted.append(target + indent[len(source) :] + body)
 		else:
 			shifted.append(target + body)
 	return shifted
@@ -61,11 +68,12 @@ def _similarity(window: Sequence[Tuple[int, str]], wanted: Sequence[str]) -> flo
 	return total / len(wanted)
 
 
-def _best_window(haystack: List[Tuple[int, str]], wanted: List[str],
-		start: int, stop: int) -> Tuple[float, int]:
+def _best_window(
+	haystack: List[Tuple[int, str]], wanted: List[str], start: int, stop: int
+) -> Tuple[float, int]:
 	best_score, best_index = 0.0, -1
 	for index in range(start, min(stop, len(haystack) - len(wanted) + 1)):
-		score = _similarity(haystack[index:index + len(wanted)], wanted)
+		score = _similarity(haystack[index : index + len(wanted)], wanted)
 		if score > best_score:
 			best_score, best_index = score, index
 	return best_score, best_index
@@ -73,7 +81,7 @@ def _best_window(haystack: List[Tuple[int, str]], wanted: List[str],
 
 def _anchor(haystack: List[Tuple[int, str]], anchor_lines: List[str], start: int) -> int:
 	for index in range(start, len(haystack) - len(anchor_lines) + 1):
-		window = haystack[index:index + len(anchor_lines)]
+		window = haystack[index : index + len(anchor_lines)]
 		if [line for _, line in window] == anchor_lines:
 			return index
 	return -1
@@ -133,7 +141,7 @@ def describe_closest(file_text: str, search: str, context: int = 3) -> str:
 	span = len(search_lines)
 	best_score, best_index = 0.0, 0
 	for index in range(max(1, len(file_lines) - span + 1)):
-		window = file_lines[index:index + span]
+		window = file_lines[index : index + span]
 		score = sum(
 			SequenceMatcher(None, normalize(wanted), normalize(actual)).ratio()
 			for wanted, actual in zip(search_lines, window)

@@ -7,8 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
-from ..editor import check_syntax
-from ..errors import SyntaxGuardError, TulesError, WorkspaceError
+from ..errors import TulesError, WorkspaceError
 from ..models import Result
 from ..registry import command, flag, number, text
 from ..workspace import SKIPPED_DIRS
@@ -92,31 +91,9 @@ def read(agent, payload: Dict[str, Any]) -> Result:
 
 @command("write", "Create or fully overwrite a file", mutates=True)
 def write(agent, payload: Dict[str, Any]) -> Result:
-	relpath = _path(payload, "file_path", "file")
-	content = text(payload, "content", "")
-	path = agent.workspace.resolve(relpath)
-	if path.suffix == ".py":
-		problem = check_syntax(content, relpath)
-		if problem:
-			raise SyntaxGuardError("SYNTAX_ERROR_PREVENTED", error=problem)
-	if path.exists():
-		document = agent.workspace.load(relpath)
-		if document.text == content:
-			raise TulesError("NO_CHANGE: content is identical to the existing file")
-		backup = agent.workspace.save(document, content)
-		return Result.ok(
-			"Updated " + document.relpath,
-			type="update",
-			content=content,
-			original_file=document.text,
-			backup=agent.workspace.relativize(backup),
-		)
-	agent.workspace.write(path, content)
-	return Result.ok(
-		"Created " + agent.workspace.relativize(path),
-		type="create",
-		content=content,
-		original_file=None,
+	return agent.editor.write_file(
+		_path(payload, "file_path", "file"),
+		text(payload, "content", ""),
 	)
 
 
@@ -294,14 +271,13 @@ def read_file(agent, payload: Dict[str, Any]) -> Result:
 	first = payload.get("start_line")
 	last = payload.get("end_line")
 	if first is None and last is None:
-		return Result.ok(
-			f"Read {document.relpath}", content=document.text, total_lines=len(lines))
+		return Result.ok(f"Read {document.relpath}", content=document.text, total_lines=len(lines))
 	first = number(payload, "start_line", 1)
 	last = number(payload, "end_line", len(lines))
-	body = "\n".join(lines[max(0, first - 1):min(len(lines), last)])
+	body = "\n".join(lines[max(0, first - 1) : min(len(lines), last)])
 	return Result.ok(
-		f"Read lines {first}-{last} of {document.relpath}",
-		content=body, total_lines=len(lines))
+		f"Read lines {first}-{last} of {document.relpath}", content=body, total_lines=len(lines)
+	)
 
 
 @command("view", "Read a file with line numbers, ready to quote back")
@@ -310,11 +286,13 @@ def view(agent, payload: Dict[str, Any]) -> Result:
 	lines = document.lines
 	first = number(payload, "start_line", 1)
 	last = number(payload, "end_line", min(len(lines), first + PREVIEW_LINES - 1))
-	window = lines[max(0, first - 1):min(len(lines), last)]
+	window = lines[max(0, first - 1) : min(len(lines), last)]
 	body = "\n".join(f"{first + offset:4d} | {line}" for offset, line in enumerate(window))
 	return Result.ok(
 		f"Viewed {document.relpath} lines {first}-{first + len(window) - 1}",
-		content=body, total_lines=len(lines))
+		content=body,
+		total_lines=len(lines),
+	)
 
 
 @command("list_files", "List workspace files matching a name fragment")

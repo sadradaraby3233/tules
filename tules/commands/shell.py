@@ -69,7 +69,8 @@ def powershell(agent, payload: Dict[str, Any]) -> Result:
 	if not executable:
 		raise TulesError(
 			"PowerShell is not installed or is not on PATH. "
-			"Install PowerShell 7 (pwsh) to use this tool.")
+			"Install PowerShell 7 (pwsh) to use this tool."
+		)
 	return _execute(
 		agent,
 		payload,

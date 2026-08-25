@@ -1,11 +1,14 @@
 """Filesystem access confined to a single project root."""
 
+import os
 import re
+from contextlib import suppress
 import shutil
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Optional, Set
+from typing import Iterator, List, Optional, Set
 
 from .errors import WorkspaceError
 
@@ -13,16 +16,65 @@ BACKUP_DIR = ".tules_backups"
 STATE_DIR = ".tules"
 
 TEXT_SUFFIXES: Set[str] = {
-	".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp",
-	".cs", ".html", ".css", ".scss", ".json", ".xml", ".yaml", ".yml", ".toml",
-	".ini", ".cfg", ".md", ".rst", ".txt", ".sql", ".sh", ".bash", ".rb", ".go",
-	".rs", ".swift", ".kt", ".php", ".lua", ".nvgt",
+	".py",
+	".js",
+	".ts",
+	".jsx",
+	".tsx",
+	".java",
+	".cpp",
+	".c",
+	".h",
+	".hpp",
+	".cs",
+	".html",
+	".css",
+	".scss",
+	".json",
+	".xml",
+	".yaml",
+	".yml",
+	".toml",
+	".ini",
+	".cfg",
+	".md",
+	".rst",
+	".txt",
+	".sql",
+	".sh",
+	".bash",
+	".rb",
+	".go",
+	".rs",
+	".swift",
+	".kt",
+	".php",
+	".lua",
+	".nvgt",
 }
 
 SKIPPED_DIRS: Set[str] = {
-	"__pycache__", ".git", ".hg", ".svn", "node_modules", "venv", ".venv", "env",
-	"dist", "build", ".idea", ".vscode", ".mypy_cache", ".pytest_cache", ".tox",
-	"target", "bin", "obj", "site-packages", BACKUP_DIR, STATE_DIR,
+	"__pycache__",
+	".git",
+	".hg",
+	".svn",
+	"node_modules",
+	"venv",
+	".venv",
+	"env",
+	"dist",
+	"build",
+	".idea",
+	".vscode",
+	".mypy_cache",
+	".pytest_cache",
+	".tox",
+	"target",
+	"bin",
+	"obj",
+	"site-packages",
+	BACKUP_DIR,
+	STATE_DIR,
 }
 
 MAX_TEXT_BYTES = 4 * 1024 * 1024
@@ -39,7 +91,7 @@ class Document:
 	newline: str
 
 	@property
-	def lines(self):
+	def lines(self) -> List[str]:
 		return self.text.split("\n")
 
 
@@ -126,30 +178,52 @@ class Workspace:
 		return backup
 
 	def write(self, path: Path, text: str, newline: str = "\n") -> None:
+		"""Atomically write UTF-8 text, leaving the old file intact on failure."""
 		path.parent.mkdir(parents=True, exist_ok=True)
+		data = text.replace("\n", newline).encode("utf-8")
+		temporary: Optional[Path] = None
 		try:
-			path.write_bytes(text.replace("\n", newline).encode("utf-8"))
+			with tempfile.NamedTemporaryFile(
+				dir=path.parent, prefix=f".{path.name}.", delete=False
+			) as handle:
+				temporary = Path(handle.name)
+				handle.write(data)
+				handle.flush()
+				os.fsync(handle.fileno())
+			if path.exists():
+				shutil.copymode(path, temporary)
+			os.replace(temporary, path)
 		except OSError as exc:
+			if temporary is not None:
+				with suppress(OSError):
+					temporary.unlink(missing_ok=True)
 			raise WorkspaceError(f"Cannot write {self.relativize(path)}: {exc}") from exc
 
 	def back_up(self, path: Path) -> Path:
+		"""Copy a file to a unique timestamped backup, even after rapid edits."""
 		stamp = datetime.now().strftime(BACKUP_STAMP)
 		target = self.backup_root / path.parent.relative_to(self.root)
 		target.mkdir(parents=True, exist_ok=True)
-		backup = target / f"{path.stem}_{stamp}{path.suffix}"
+		base = target / f"{path.stem}_{stamp}{path.suffix}"
+		backup = base
+		counter = 1
+		while backup.exists():
+			backup = target / f"{path.stem}_{stamp}_{counter}{path.suffix}"
+			counter += 1
 		shutil.copy2(path, backup)
 		return backup
 
-	def backups_of(self, path: Path) -> list:
+	def backups_of(self, path: Path) -> List[Path]:
 		folder = self.backup_root / path.parent.relative_to(self.root)
 		if not folder.is_dir():
 			return []
-		pattern = re.compile(rf"^{re.escape(path.stem)}_\d{{8}}_\d{{6}}$")
+		pattern = re.compile(rf"^{re.escape(path.stem)}_\d{{8}}_\d{{6}}(?:_\d+)?$")
 		found = [
-			item for item in folder.iterdir()
+			item
+			for item in folder.iterdir()
 			if item.is_file() and item.suffix == path.suffix and pattern.match(item.stem)
 		]
-		return sorted(found, key=lambda f: f.name, reverse=True)
+		return sorted(found, key=lambda item: (item.stat().st_mtime_ns, item.name), reverse=True)
 
 	def restore(self, path: Path) -> Path:
 		backups = self.backups_of(path)

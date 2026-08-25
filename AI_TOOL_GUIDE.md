@@ -1151,9 +1151,13 @@ relative directory structure. Backup names include a timestamp:
 ```
 
 Creating a brand-new file has no prior content to back up. Deletion does create a
-backup. `undo` restores the newest backup matching the same file.
+backup. Multiple edits within one second receive unique backup names, and `undo`
+restores the newest backup matching the same file.
 
-Backups are a safety net, not a substitute for careful edits or version control.
+Writes are committed with an atomic same-directory replacement and preserve permissions
+on existing targets. A failed or interrupted write therefore leaves the previous target
+intact rather than exposing partial content. Backups are a safety net, not a substitute
+for careful edits or version control.
 
 ## 20. Python syntax guard
 
