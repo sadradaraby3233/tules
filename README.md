@@ -1,132 +1,336 @@
 # TULES
 
-A local code agent driven by the clipboard. You paste a command block into any chat
-model's answer, copy it, and TULES applies it to your project and copies a plain text
-reply back for you to paste into the chat.
+A local, model-independent coding tool framework controlled through the clipboard.
 
-TULES never talks to a model itself: it is the hands, the model is the brain.
+TULES does not connect to an AI service. Any AI model that can produce the documented
+JSON commands can inspect and modify a local project through TULES:
 
-## Install
+- the **AI model** decides what to inspect, change, and verify;
+- **TULES** performs the filesystem, search, replacement, analysis, and shell work;
+- the **user** copies commands to TULES and pastes results back into the conversation.
+
+> **Using TULES with an AI model?** Give the model
+> **[AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md)**. It contains the complete operating contract,
+> command schemas, response formats, decision rules, recovery guidance, and examples.
+> This README is intentionally shorter and intended for repository users and contributors.
+
+## Highlights
+
+- Model-independent clipboard protocol—no API key or model SDK required.
+- One universal `replace` action instead of several competing replacement engines.
+- Exact, normalized-quote, whitespace, token, Python AST, context, and fuzzy matching.
+- Ambiguous replacements are rejected unless context, a candidate ID, or explicit
+  replace-all behavior resolves them.
+- Workspace-confined file access.
+- Timestamped backups and per-file undo.
+- Python syntax protection before writes are committed.
+- CRLF/LF preservation.
+- Literal, regular-expression, fuzzy, glob, and filtered content search.
+- Structured Jupyter notebook cell editing.
+- Bash and PowerShell execution with timeouts and structured results.
+- Static review, symbol extraction, dependency checks, and batch validation.
+
+## Requirements
+
+- Python 3.9 or newer
+- `pyperclip` (installed automatically)
+- A working system clipboard
+- Bash for the `bash` and backward-compatible `run` actions
+- PowerShell 7 (`pwsh`) or Windows PowerShell for the optional `powershell` action
+
+## Installation
+
+From a clone of this repository:
 
 ```sh
 pip install -e .
 ```
 
-Python 3.9 or newer. The only runtime dependency is `pyperclip`.
-
-## Run
-
-```sh
-tules .                  # watch the clipboard, edit the current directory
-tules /path/to/project   # watch the clipboard, edit another project
-python -m tules .        # same thing without installing the console script
-
-tules . --actions        # list every supported action
-tules . --no-shell       # refuse the run action
-tules . --exec cmd.json  # apply one payload and exit (no clipboard involved)
-```
-
-## The protocol
-
-Anything the model copies is ignored unless it contains a block like this:
-
-```
-edit:
-{"action": "str_replace", "file": "app.py", "old_str": "x = 1", "new_str": "x = 2"}
-endedit
-```
-
-The payload is one JSON object, or an array of them to run a batch. Markdown fences,
-trailing commas and raw newlines inside strings are repaired before parsing.
-
-The reply that lands on your clipboard looks like this:
-
-```
-STATUS: SUCCESS
-MESSAGE: Edited app.py
-DETAILS:
-  backup: .tules_backups/app_20260825_114604.py
-  reason: AI edit
-```
-
-### Actions
-
-| Action | Writes | What it does |
-| --- | --- | --- |
-| `read_file` | | Read a file, optionally `start_line`/`end_line` |
-| `view` | | Read a file with line numbers, ready to quote back |
-| `list_files` | | List files matching a name fragment |
-| `search` | | Find a literal string (`case_sensitive`, `whole_word`) |
-| `search_regex` | | Find a regular expression |
-| `search_fuzzy` | | Find similar lines (`threshold`) |
-| `analyze` | | Summarize one file, or the project when `file` is omitted |
-| `extract_symbols` | | List functions, classes and imports |
-| `review` | | Static checks: syntax, unused imports, redefinitions, layout |
-| `check_duplicates` | | Symbols defined more than once |
-| `impact_check` | | Files importing or referencing a module |
-| `diff_preview` | | Show the diff an edit would produce |
-| `validate_batch` | | Dry-run a list of commands before sending them |
-| `memory` | | Append to or read `.tules/scratchpad.md` |
-| `run` | | Run a shell command in the workspace root |
-| `list_actions` (`help`) | | List every action |
-| `str_replace` | yes | Replace a string that occurs exactly once |
-| `replace` | yes | Replace the first occurrence |
-| `search_and_replace_all` | yes | Replace every occurrence |
-| `surgical_replace` | yes | Exact, then whitespace agnostic, then token, then AST |
-| `context_replace` | yes | Similarity match anchored on `context_before`/`context_after` |
-| `replace_by_line` | yes | Replace an inclusive `line_start`..`line_end` range |
-| `insert` | yes | Insert `content` after `line_start` |
-| `delete` | yes | Delete an inclusive line range |
-| `smart_replace` | yes | Replace when unique, otherwise list the candidates |
-| `confirm_smart_replace` | yes | Replace the candidate with the given `match_id` |
-| `create_file` | yes | Create a new file |
-| `delete_file` | yes | Delete a file, after backing it up |
-| `undo` | yes | Restore a file from its most recent backup |
-
-### Choosing a replace action
-
-* `str_replace` is the default: it refuses ambiguous and missing matches.
-* `surgical_replace` when the model cannot reproduce indentation or line wrapping.
-* `context_replace` when the block appears several times and only the surroundings
-  tell them apart; it reports a confidence and refuses weak matches.
-* `replace_by_line` after a `view`, when nothing else fits.
-
-## Safety
-
-* Every path is resolved inside the workspace root; `..` and absolute paths elsewhere
-  are refused.
-* Every write is preceded by a timestamped copy in `.tules_backups/`, mirroring the
-  project layout. `undo` restores the newest one.
-* An edit that would leave a `.py` file unparseable is refused, and the reply carries
-  the syntax error plus the lines around it.
-* Line endings are preserved: a CRLF file stays CRLF.
-* After a successful edit the file is reviewed and any new issue is attached to the
-  reply as a warning.
-* `run` executes arbitrary shell commands. Start with `--no-shell` if you do not want
-  the model to have that.
-
-## Layout
-
-```
-tules/
-  agent.py        dispatch, auto review
-  registry.py     action name -> handler
-  commands/       one module per family of actions
-  editor.py       every write, backup and syntax guard
-  matching.py     normalization and fuzzy block location
-  search.py       text, regex, fuzzy and filename search
-  analysis.py     symbols, review, duplicates, dependents
-  workspace.py    path resolution, reads, writes, backups
-  protocol.py     clipboard payload -> commands
-  formatting.py   results -> the plain text reply
-  monitor.py      the clipboard loop
-  cli.py          argument parsing
-tests/            pytest suite
-```
-
-## Tests
+For development:
 
 ```sh
 pip install -e ".[dev]"
 pytest
 ```
+
+## Running TULES
+
+```sh
+tules .
+tules /path/to/project
+python -m tules .
+```
+
+Useful options:
+
+```sh
+tules . --actions        # print all registered actions
+tules . --no-shell       # disable Bash, PowerShell, and run
+tules . --exec cmd.json  # execute one JSON payload file and exit
+```
+
+The supplied directory is the workspace root. File tools cannot escape it.
+
+## Basic workflow
+
+1. Start TULES in the project you want to modify.
+2. Give your AI model [AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md) and your task.
+3. Copy the model's response containing an `edit:` block.
+4. TULES executes the JSON and writes a structured result to the clipboard.
+5. Paste that result back into the model.
+6. Continue until the model has inspected, changed, and verified the project.
+
+## Command protocol
+
+TULES ignores clipboard text unless it contains an `edit:` / `endedit` block:
+
+```text
+edit:
+{"action":"read","file_path":"src/app.py","offset":1,"limit":200}
+endedit
+```
+
+A JSON array runs a sequential batch:
+
+```text
+edit:
+[
+  {"action":"glob","pattern":"**/*.py"},
+  {"action":"grep","pattern":"TODO","type":"py","output_mode":"content"}
+]
+endedit
+```
+
+TULES tolerates Markdown fences, trailing commas, and some common JSON formatting
+mistakes, but valid JSON is recommended.
+
+## Result format
+
+A successful command returns plain text similar to:
+
+```text
+STATUS: SUCCESS
+MESSAGE: Edited src/app.py
+DETAILS:
+  backup: .tules_backups/src/app_20260825_114604.py
+  match_level: exact
+  occurrences: 1
+```
+
+Failures return `STATUS: FAILED` and structured diagnostic details. A failed guarded
+edit does not modify the target. Batch responses contain an individual status for every
+command; batches are sequential and are not transactional.
+
+## Universal replacement
+
+`replace` is the canonical string and block replacement action:
+
+```text
+edit:
+{
+  "action":"replace",
+  "file":"src/app.py",
+  "old_string":"def old_name():\n    return 1",
+  "new_string":"def new_name():\n    return 2"
+}
+endedit
+```
+
+Accepted field variants:
+
+| Purpose | Fields |
+| --- | --- |
+| Path | `file` or `file_path` |
+| Existing text | `old_string`, `old_str`, or `search` |
+| Replacement text | `new_string`, `new_str`, or `replace_with` |
+| Disambiguation | `context_before`, `context_after`, or `match_id` |
+| Replace every occurrence | `replace_all: true` |
+| Fuzzy matching floor | `confidence_threshold` |
+| Audit label | `reason` |
+
+The replacement cascade is:
+
+1. unique exact match;
+2. straight/curly quote-normalized match with typography preservation;
+3. whitespace-insensitive multiline match with indentation adaptation;
+4. token-equivalent line match;
+5. Python function/class AST match;
+6. confidence-gated context or fuzzy match.
+
+It will not silently choose among unresolved duplicates. An empty search creates a
+missing file or fills an empty file, but cannot overwrite a non-empty file.
+
+Older action names remain accepted for existing integrations, but all route to the same
+engine: `edit`, `str_replace`, `surgical_replace`, `context_replace`,
+`search_and_replace_all`, `smart_replace`, and `confirm_smart_replace`. New integrations
+should use `replace`.
+
+## Available actions
+
+Action names are case-insensitive.
+
+### Read and discover
+
+| Action | Purpose |
+| --- | --- |
+| `read` | Read a numbered line window using `offset` and `limit` |
+| `read_file` | Read raw file text, optionally by line range |
+| `view` | Read numbered lines suitable for quoting and line edits |
+| `glob` | Find files using path wildcard patterns |
+| `list_files` | Find files by a filename fragment |
+
+### Search and inspect
+
+| Action | Purpose |
+| --- | --- |
+| `grep` | Regex search with path/type/glob filters, context, modes, and pagination |
+| `search` | Literal workspace search |
+| `search_regex` | Lightweight regular-expression search |
+| `search_fuzzy` | Find approximately matching lines |
+| `analyze` | Summarize a file or survey the project |
+| `extract_symbols` | Extract functions, classes, and imports |
+| `review` | Run built-in static checks |
+| `impact_check` | Find files that import or reference a module |
+| `check_duplicates` | Find duplicate symbol definitions |
+
+### Modify files
+
+| Action | Purpose |
+| --- | --- |
+| `replace` | Universal safe string/block replacement |
+| `replace_by_line` | Replace an inclusive numbered line range |
+| `insert` | Insert content after a line number |
+| `delete` | Delete an inclusive line range |
+| `diff_preview` | Preview an exact replacement without writing |
+| `write` | Create or fully overwrite a file |
+| `create_file` | Create a file and refuse an existing path |
+| `delete_file` | Back up and delete a file |
+| `undo` | Restore the newest backup for one file |
+| `notebook_edit` | Insert, replace, or delete a notebook cell |
+
+### Execute and coordinate
+
+| Action | Purpose |
+| --- | --- |
+| `bash` | Run Bash in the workspace with a timeout |
+| `powershell` | Run PowerShell when installed |
+| `run` | Backward-compatible alias for Bash |
+| `validate_batch` | Preflight supported commands without applying them |
+| `memory` | Read or append local scratchpad/todo notes |
+| `list_actions` / `help` | List the live action registry |
+
+For exact schemas, return fields, failure modes, and examples for every action, see
+[AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md).
+
+## Shell execution
+
+Bash example:
+
+```text
+edit:
+{"action":"bash","command":"pytest -q","timeout":180,"description":"Run tests"}
+endedit
+```
+
+PowerShell example:
+
+```text
+edit:
+{"action":"powershell","command":"Get-ChildItem -Recurse","timeout":60}
+endedit
+```
+
+Both return `stdout`, `stderr`, `exit_code`, shell metadata, and truncation status. Each
+output stream retains its last 30,000 characters. Timeouts must be between 1–600 seconds. Background execution is intentionally not
+supported in clipboard mode. If PowerShell is not installed, its action returns a clear
+failure rather than interpreting the command in another shell.
+
+Use `--no-shell` when command execution should be unavailable.
+
+## Safety model
+
+### Workspace confinement
+
+Paths are resolved against the configured workspace. Escaping through `..`, absolute
+outside paths, or resolving symlinks is rejected.
+
+### Backups
+
+Existing files are copied under `.tules_backups/` before mutation. Directory structure
+is mirrored and filenames include timestamps. `undo` restores the latest backup for the
+requested file.
+
+### Python syntax guard
+
+Before committing a `.py` create, overwrite, replacement, insertion, deletion, or line
+replacement, TULES compiles the resulting source. Invalid Python is rejected and the
+original remains unchanged.
+
+### Line endings
+
+Text is normalized internally, while existing LF or CRLF style is restored on save.
+
+### Automatic review
+
+After successful mutations, TULES reviews the target when its path is present in the
+payload and attaches a limited set of findings as warnings.
+
+## Project organization
+
+```text
+tules/
+  agent.py          dispatch and automatic post-edit review
+  registry.py       command registration, aliases, and argument helpers
+  commands/
+    file_tools.py   reads, writes, search, notebooks, backups, and memory
+    edits.py        universal replace, line edits, and diff preview
+    search.py       native literal/regex/fuzzy and dependency searches
+    review.py       analysis, review, and batch validation
+    shell.py        Bash and PowerShell execution
+  editor.py         replacement cascade, mutation guards, and file lifecycle
+  matching.py       normalization, indentation, and fuzzy block scoring
+  workspace.py      path confinement, encoding, writes, and backups
+  analysis.py       symbols, reviews, duplicate and dependency analysis
+  protocol.py       edit-block extraction and tolerant JSON decoding
+  formatting.py     plain-text result rendering
+  monitor.py        clipboard loop
+  cli.py            command-line interface
+tests/              unit and integration tests
+AI_TOOL_GUIDE.md    complete model-facing operating manual
+```
+
+The modules intentionally separate protocol, workspace access, matching, mutation,
+analysis, and command adapters so future contributors—or another AI model—can modify one
+area without reverse-engineering the whole project.
+
+## Testing
+
+```sh
+pytest -q
+```
+
+The suite includes unit tests, full action integration coverage, universal replacement
+edge cases, path confinement, syntax guards, Bash behavior, and PowerShell availability
+and command construction.
+
+For linting:
+
+```sh
+ruff check tules tests
+```
+
+## Contributing
+
+When adding or changing an action:
+
+1. Register it in the appropriate `tules/commands/` module.
+2. Keep filesystem mutation inside `Editor` and `Workspace` safeguards.
+3. Add success and edge-case tests.
+4. Update this user README when installation or public capabilities change.
+5. Update `AI_TOOL_GUIDE.md` when schemas, decision rules, result fields, or failure
+   behavior change.
+6. Run the complete test and lint suites.
+
+## License
+
+See the repository license file for licensing terms.
