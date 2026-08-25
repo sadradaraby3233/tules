@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cheetos Factory: Audio Ops - Blind Accessible</title>
+<style>
+  :root { --cheeto-orange:#ff8c00; --cheeto-red:#ff2a00; --bg:#0a0a0a; --text:#ffe9c0; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;width:100%;background:var(--bg);color:var(--text);font-family:monospace;overflow:hidden;touch-action:none;user-select:none}
+  #overlay{position:fixed;inset:0;background:radial-gradient(circle at center,#ff8c00 0%,#1a0a00 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;cursor:pointer}
+  #overlay h1{font-size:clamp(2rem,8vw,4rem);color:#fff;text-shadow:0 0 20px #ff8c00;animation:pulse 1.2s infinite alternate}
+  #overlay p{margin-top:2rem;font-size:1.2rem;background:#000a;padding:1rem 2rem;border-radius:1rem;border:2px solid var(--cheeto-orange)}
+  @keyframes pulse{from{transform:scale(1)}to{transform:scale(1.05)}}
+  #game-root{display:flex;flex-direction:column;height:100%;width:100%}
+  #top-bar{display:flex;justify-content:space-between;padding:0.5rem 1rem;background:#1a1200;border-bottom:2px solid var(--cheeto-orange);font-size:0.9rem}
+  #log{flex:1;overflow:auto;padding:1rem;white-space:pre-wrap;line-height:1.5;font-size:1rem;background:#0f0b00}
+  #log .sys{color:#ffaa33}
+  #log .room{color:#fff;font-weight:bold;font-size:1.2rem}
+  #log .speak{color:#aaffff}
+  #touch-controls{display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr;gap:6px;padding:6px;background:#1a1200;height:42vh;max-height:360px}
+  #touch-controls button{background:#2a1a00;border:2px solid var(--cheeto-orange);color:var(--text);font-size:1.1rem;border-radius:12px;touch-action:manipulation}
+  #touch-controls button:active{background:var(--cheeto-orange);color:#000}
+  #touch-up{grid-column:2;grid-row:1}
+  #touch-left{grid-column:1;grid-row:2}
+  #touch-center{grid-column:2;grid-row:2;background:#ff8c00 !important;color:#000 !important;font-weight:bold}
+  #touch-right{grid-column:3;grid-row:2}
+  #touch-down{grid-column:2;grid-row:3}
+  #bottom-bar{display:flex;gap:6px;padding:6px;background:#000}
+  #bottom-bar button{flex:1;padding:0.8rem;background:#222;border:1px solid #555;color:#fff;border-radius:8px;font-size:0.9rem}
+  #bottom-bar button:focus{outline:3px solid var(--cheeto-orange)}
+  #menu-overlay{position:fixed;inset:0;background:#000e;display:flex;align-items:center;justify-content:center;z-index:50}
+  #menu-box{background:#1a1200;border:3px solid var(--cheeto-orange);border-radius:16px;padding:1.5rem;min-width:300px;max-width:90vw;max-height:90vh;overflow:auto}
+  #menu-box h2{color:var(--cheeto-orange);margin-bottom:1rem;text-align:center}
+  .menu-item{padding:0.9rem 1rem;margin:0.4rem 0;background:#2a1e00;border:2px solid transparent;border-radius:10px;cursor:pointer;font-size:1.1rem}
+  .menu-item.selected{background:var(--cheeto-orange);color:#000;border-color:#fff;transform:scale(1.03)}
+  .hidden{display:none !important}
+  #aria-live{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
+  #visualizer{height:6px;background:#000;position:relative;overflow:hidden}
+  #visualizer-bar{height:100%;width:30%;background:linear-gradient(90deg,var(--cheeto-orange),var(--cheeto-red));position:absolute;animation:scan 2s linear infinite}
+  @keyframes scan{0%{left:-30%}100%{left:100%}}
+  kbd{background:#333;border:1px solid #666;border-bottom-width:3px;padding:2px 6px;border-radius:4px;font-size:0.85em}
+</style>
+</head>
+<body>
+<div id="overlay" role="button" tabindex="0" aria-label="Tap to start Cheetos Factory Audio Game">
+  <h1>🧀 CHEETOS FACTORY<br>AUDIO OPS</h1>
+  <p>👆 TAP / CLICK / PRESS ENTER TO START<br><small>Headphones recommended for 3D audio</small></p>
+  <p style="font-size:0.9rem;margin-top:1rem">100% Procedural Sound • No Images • Blind Accessible</p>
+</div>
+
+<div id="game-root" class="hidden">
+  <div id="top-bar">
+    <span id="location-display">LOBBY</span>
+    <span id="money-display">$20</span>
+    <span id="level-display">LVL 1 Intern</span>
+  </div>
+  <div id="visualizer"><div id="visualizer-bar"></div></div>
+  <div id="log" aria-live="polite" role="log"></div>
+  <div id="touch-controls" aria-label="Movement controls">
+    <button id="touch-up" aria-label="Move forward">▲<br>FORWARD<br><small>W / ↑</small></button>
+    <button id="touch-left" aria-label="Turn left or move west">◀<br>LEFT<br><small>A / ←</small></button>
+    <button id="touch-center" aria-label="Interact or scan surroundings">●<br>INTERACT<br><small>ENTER / TAP</small></button>
+    <button id="touch-right" aria-label="Turn right or move east">▶<br>RIGHT<br><small>D / →</small></button>
+    <button id="touch-down" aria-label="Move back">▼<br>BACK<br><small>S / ↓</small></button>
+  </div>
+  <div id="bottom-bar">
+    <button id="btn-menu" aria-label="Open menu">MENU (ESC)</button>
+    <button id="btn-inventory" aria-label="Inventory">BAG (I)</button>
+    <button id="btn-scan" aria-label="Scan room">SCAN (SPACE)</button>
+    <button id="btn-help" aria-label="Help">HELP (H)</button>
+  </div>
+</div>
+
+<div id="menu-overlay" class="hidden" role="dialog" aria-modal="true">
+  <div id="menu-box"></div>
+</div>
+
+<div id="aria-live" aria-live="assertive" aria-atomic="true"></div>
+
+<script>
+// ============================================================================
+// CHEETOS FACTORY AUDIO OPS - MASSIVE DATA DRIVEN SYSTEM
+// All sounds procedurally synthesized. No samples. Fully blind accessible.
+// TO EXPAND: Edit GAME_DATA below. Everything else is engine.
+// ============================================================================
+
+const GAME_DATA = {
+  // ========= INGREDIENTS - ADD NEW ONES HERE =========
+  ingredients: {
+    cornmeal: { id:'cornmeal', name:'Cornmeal', desc:'Golden ground corn, base of all Cheetos', value:1, weight:1, sound:'pour_grain', collectRoom:'corn-silo', free:true },
+    water: { id:'water', name:'Filtered Water', desc:'Pure H2O to make dough', value:0, weight:1, sound:'pour_water', collectRoom:'mixing-lab', free:true },
+    vegetableOil: { id:'vegetableOil', name:'Vegetable Oil', desc:'For frying. Sizzle!', value:2, weight:1, sound:'pour_oil', collectRoom:'fryer-room', free:false, buyPrice:3 },
+    cheddarDust: { id:'cheddarDust', name:'Cheddar Dust', desc:'Classic orange cheese magic', value:5, weight:1, sound:'puff_powder', collectRoom:'seasoning-tunnel', free:false, buyPrice:8 },
+    flaminDust: { id:'flaminDust', name:'Flamin Hot Dust', desc:'Red hot chili lime fire', value:8, weight:1, sound:'puff_spicy', collectRoom:'seasoning-tunnel', free:false, buyPrice:12 },
+    whiteCheddarDust: { id:'whiteCheddarDust', name:'White Cheddar Dust', desc:'Sharp white cheddar', value:6, weight:1, sound:'puff_powder', collectRoom:'r-and-d', free:false, buyPrice:10 },
+    jalapenoPowder: { id:'jalapenoPowder', name:'Jalapeño Powder', desc:'Green kick', value:7, weight:1, sound:'puff_spicy', collectRoom:'r-and-d', free:false, buyPrice:11 },
+    xxtraHotPowder: { id:'xxtraHotPowder', name:'XXXtra Flamin Powder', desc:'Double fire, double danger', value:12, weight:1, sound:'puff_spicy', collectRoom:'chester-office', free:false, buyPrice:20 },
+    salt: { id:'salt', name:'Sea Salt', desc:'Simple salt', value:1, weight:1, sound:'sprinkle', collectRoom:'mixing-lab', free:true },
+    crackerFlour: { id:'crackerFlour', name:'Cracker Flour', desc:'For Cheetos Crackers', value:2, weight:1, sound:'pour_grain', collectRoom:'warehouse', free:false, buyPrice:4 },
+    honeyBbqDust: { id:'honeyBbqDust', name:'Honey BBQ Dust', desc:'Sweet smoky', value:9, weight:1, sound:'puff_powder', collectRoom:'r-and-d', free:false, buyPrice:14 },
+    buttermilkPowder: { id:'buttermilkPowder', name:'Buttermilk Powder', desc:'Tangy creamy', value:6, weight:1, sound:'puff_powder', collectRoom:'quality-lab', free:false, buyPrice:9 },
+  },
+
+  // ========= INTERMEDIATES - INTERNAL PRODUCTS =========
+  intermediates: {
+    dough: { id:'dough', name:'Raw Corn Dough', desc:'Sticky yellow dough' },
+    crunchyShape: { id:'crunchyShape', name:'Crunchy Curl Shape', desc:'Uncooked crunchy curl' },
+    puffShape: { id:'puffShape', name:'Puff Shape', desc:'Uncooked puffed ball' },
+    friedCrunchy: { id:'friedCrunchy', name:'Fried Crunchy Base', desc:'Hot fried crunchy, needs seasoning' },
+    friedPuff: { id:'friedPuff', name:'Fried Puff Base', desc:'Hot fried puff, needs seasoning' },
+    bakedCrunchy: { id:'bakedCrunchy', name:'Baked Crunchy Base', desc:'Baked not fried' },
+    classicSeasoned: { id:'classicSeasoned', name:'Cheddar Seasoned Crunchy', desc:'Ready to pack classic' },
+    flaminSeasoned: { id:'flaminSeasoned', name:'Flamin Seasoned Crunchy', desc:'Ready to pack flamin' },
+    whiteSeasoned: { id:'whiteSeasoned', name:'White Cheddar Puff Seasoned', desc:'Ready to pack white' },
+    jalapenoSeasoned: { id:'jalapenoSeasoned', name:'Jalapeño Seasoned', desc:'Ready to pack jalapeno' },
+    xxtraSeasoned: { id:'xxtraSeasoned', name:'XXXtra Seasoned', desc:'Ready to pack xxtra' },
+    honeySeasoned: { id:'honeySeasoned', name:'Honey BBQ Seasoned', desc:'Ready to pack honey bbq' },
+  },
+
+  // ========= PROCESSES / RECIPES - DATA DRIVEN CRAFTING =========
+  // Each process: inputs, outputs, machine, xp, sound
+  // To add new product: add final packaging process here
+  processes: [
+    // Stage 1 Mixing
+    { id:'make-dough', name:'Mix Corn Dough', desc:'Combine cornmeal and water into dough', machine:'mixer', inputs:{cornmeal:2, water:1}, outputs:{dough:2}, xp:5, sound:'mixer', unlockLevel:1 },
+    { id:'make-cracker-dough', name:'Mix Cracker Dough', desc:'Cracker flour + water + salt', machine:'mixer', inputs:{crackerFlour:2, water:1, salt:1}, outputs:{dough:1}, xp:5, sound:'mixer', unlockLevel:2 },
+
+    // Stage 2 Extruder - shape
+    { id:'extrude-crunchy', name:'Extrude Crunchy Curls', desc:'Push dough through crunchy die', machine:'extruder', inputs:{dough:1}, outputs:{crunchyShape:2}, xp:8, sound:'extruder', unlockLevel:1 },
+    { id:'extrude-puff', name:'Extrude Puffs', desc:'Puff it up with air injection', machine:'extruder', inputs:{dough:1}, outputs:{puffShape:2}, xp:8, sound:'extruder_puff', unlockLevel:1 },
+
+    // Stage 3 Cooking
+    { id:'fry-crunchy', name:'Fry Crunchy Curls', desc:'Deep fry till crispy', machine:'fryer', inputs:{crunchyShape:1, vegetableOil:1}, outputs:{friedCrunchy:1}, xp:10, sound:'fryer', unlockLevel:1 },
+    { id:'fry-puff', name:'Fry Puffs', desc:'Fry puffs golden', machine:'fryer', inputs:{puffShape:1, vegetableOil:1}, outputs:{friedPuff:1}, xp:10, sound:'fryer', unlockLevel:1 },
+    { id:'bake-crunchy', name:'Bake Crunchy', desc:'Oven bake for less fat', machine:'oven', inputs:{crunchyShape:1}, outputs:{bakedCrunchy:1}, xp:12, sound:'oven', unlockLevel:3 },
+
+    // Stage 4 Seasoning
+    { id:'season-classic', name:'Season Classic Cheddar', desc:'Tumble with cheddar dust', machine:'seasoningDrum', inputs:{friedCrunchy:1, cheddarDust:1}, outputs:{classicSeasoned:1}, xp:10, sound:'seasoning', unlockLevel:1 },
+    { id:'season-flamin-crunchy', name:'Season Flamin Hot Crunchy', desc:'Coat with flamin dust', machine:'seasoningDrum', inputs:{friedCrunchy:1, flaminDust:1}, outputs:{flaminSeasoned:1}, xp:15, sound:'seasoning_spicy', unlockLevel:2 },
+    { id:'season-flamin-puff', name:'Season Flamin Hot Puffs', desc:'Flamin puffs', machine:'seasoningDrum', inputs:{friedPuff:1, flaminDust:1}, outputs:{flaminSeasoned:1}, xp:15, sound:'seasoning_spicy', unlockLevel:2 },
+    { id:'season-white', name:'Season White Cheddar', desc:'White cheddar puffs', machine:'seasoningDrum', inputs:{friedPuff:1, whiteCheddarDust:1}, outputs:{whiteSeasoned:1}, xp:12, sound:'seasoning', unlockLevel:2 },
+    { id:'season-jalapeno', name:'Season Jalapeño', desc:'Jalapeño crunchy', machine:'seasoningDrum', inputs:{friedCrunchy:1, jalapenoPowder:1}, outputs:{jalapenoSeasoned:1}, xp:14, sound:'seasoning_spicy', unlockLevel:3 },
+    { id:'season-xxtra', name:'Season XXXtra Hot', desc:'Extreme heat', machine:'seasoningDrum', inputs:{friedCrunchy:1, xxtraHotPowder:1}, outputs:{xxtraSeasoned:1}, xp:20, sound:'seasoning_spicy', unlockLevel:5 },
+    { id:'season-honey', name:'Season Honey BBQ', desc:'Sweet heat puffs', machine:'seasoningDrum', inputs:{friedPuff:1, honeyBbqDust:1}, outputs:{honeySeasoned:1}, xp:18, sound:'seasoning', unlockLevel:4 },
+    { id:'season-baked-classic', name:'Season Baked Classic', desc:'Baked with cheddar', machine:'seasoningDrum', inputs:{bakedCrunchy:1, cheddarDust:1}, outputs:{classicSeasoned:1}, xp:12, sound:'seasoning', unlockLevel:3 },
+    { id:'season-cracker-cheese', name:'Season Cracker Cheese', desc:'Cracker with cheddar', machine:'seasoningDrum', inputs:{friedCrunchy:1, cheddarDust:1, crackerFlour:1}, outputs:{classicSeasoned:1}, xp:10, sound:'seasoning', unlockLevel:2 },
+
+    // Stage 5 Packaging - FINAL PRODUCTS
+    { id:'pack-classic-crunchy', name:'Pack Classic Crunchy', desc:'Bag classic crunchy Cheetos', machine:'packager', inputs:{classicSeasoned:1}, outputs:{'classic-crunchy-bag':1}, xp:10, value:15, sound:'packager', unlockLevel:1, final:true },
+    { id:'pack-flamin-crunchy', name:'Pack Flamin Hot Crunchy', desc:'Bag flamin hot crunchy', machine:'packager', inputs:{flaminSeasoned:1}, outputs:{'flamin-hot-crunchy-bag':1}, xp:15, value:25, sound:'packager', unlockLevel:2, final:true },
+    { id:'pack-flamin-puff', name:'Pack Flamin Hot Puffs', desc:'Bag flamin puffs', machine:'packager', inputs:{flaminSeasoned:1}, outputs:{'flamin-hot-puffs-bag':1}, xp:15, value:26, sound:'packager', unlockLevel:2, final:true },
+    { id:'pack-classic-puff', name:'Pack Classic Puffs', desc:'Bag classic puffs', machine:'packager', inputs:{whiteSeasoned:1}, outputs:{'classic-puffs-bag':1}, xp:12, value:18, sound:'packager', unlockLevel:1, final:true },
+    { id:'pack-white-cheddar', name:'Pack White Cheddar Puffs', desc:'Bag white cheddar', machine:'packager', inputs:{whiteSeasoned:1}, outputs:{'white-cheddar-puffs-bag':1}, xp:14, value:22, sound:'packager', unlockLevel:2, final:true },
+    { id:'pack-jalapeno', name:'Pack Jalapeño Crunchy', desc:'Bag jalapeño', machine:'packager', inputs:{jalapenoSeasoned:1}, outputs:{'jalapeno-crunchy-bag':1}, xp:16, value:28, sound:'packager', unlockLevel:3, final:true },
+    { id:'pack-xxtra', name:'Pack XXXtra Flamin Hot', desc:'Bag extreme', machine:'packager', inputs:{xxtraSeasoned:1}, outputs:{'xxtra-flamin-bag':1}, xp:25, value:40, sound:'packager', unlockLevel:5, final:true },
+    { id:'pack-baked', name:'Pack Baked Crunchy', desc:'Bag baked', machine:'packager', inputs:{classicSeasoned:1}, outputs:{'baked-crunchy-bag':1}, xp:14, value:20, sound:'packager', unlockLevel:3, final:true },
+    { id:'pack-honey-bbq', name:'Pack Honey BBQ Puffs', desc:'Bag honey bbq', machine:'packager', inputs:{honeySeasoned:1}, outputs:{'honey-bbq-bag':1}, xp:18, value:32, sound:'packager', unlockLevel:4, final:true },
+    { id:'pack-simply-white', name:'Pack Simply White Cheddar', desc:'Bag simply white', machine:'packager', inputs:{whiteSeasoned:1}, outputs:{'simply-white-bag':1}, xp:16, value:24, sound:'packager', unlockLevel:3, final:true },
+    { id:'pack-cracker-cheese', name:'Pack Cracker Cheese', desc:'Bag cheese crackers', machine:'packager', inputs:{classicSeasoned:1}, outputs:{'cracker-cheese-bag':1}, xp:13, value:19, sound:'packager', unlockLevel:2, final:true },
+    { id:'pack-cracker-flamin', name:'Pack Cracker Flamin', desc:'Bag flamin crackers', machine:'packager', inputs:{flaminSeasoned:1}, outputs:{'cracker-flamin-bag':1}, xp:15, value:27, sound:'packager', unlockLevel:3, final:true },
+    { id:'pack-popcorn', name:'Pack Cheetos Popcorn', desc:'Bag popcorn cheddar', machine:'packager', inputs:{classicSeasoned:1}, outputs:{'popcorn-bag':1}, xp:14, value:23, sound:'packager', unlockLevel:3, final:true },
+  ],
+
+  // ========= MACHINES - ADD NEW MACHINES HERE =========
+  machines: {
+    mixer: { id:'mixer', name:'Industrial Mixer', desc:'Giant spinning blades mixing dough', room:'mixing-lab', sound:'mixer', beaconFreq:180 },
+    extruder: { id:'extruder', name:'Extruder 3000', desc:'Pushes dough through shaped dies at high pressure', room:'extruder-floor', sound:'extruder', beaconFreq:220 },
+    fryer: { id:'fryer', name:'Fryer Vat', desc:'Boiling oil vat, 180 degrees', room:'fryer-room', sound:'fryer', beaconFreq:350 },
+    oven: { id:'oven', name:'Convection Oven', desc:'Bakes instead of fries', room:'fryer-room', sound:'oven', beaconFreq:300 },
+    seasoningDrum: { id:'seasoningDrum', name:'Seasoning Drum', desc:'Tumbling drum coating with dust', room:'seasoning-tunnel', sound:'seasoning', beaconFreq:260 },
+    packager: { id:'packager', name:'Packaging Line', desc:'Seals bags with crinkle', room:'packaging-line', sound:'packager', beaconFreq:400 },
+    crackerPress: { id:'crackerPress', name:'Cracker Press', desc:'Presses cracker shapes', room:'packaging-line', sound:'packager', beaconFreq:320 },
+  },
+
+  // ========= ROOMS - ADD NEW ROOMS HERE =========
+  rooms: {
+    'lobby': {
+      id:'lobby', name:'Main Lobby', desc:'You are in the grand Cheetos lobby. The air smells faintly of cheese. A giant Chester Cheetah statue purrs in the center. Marble floors echo your steps.',
+      ambience:'lobby', exits:{north:'hr-office', east:'break-room', west:'warehouse', south:'chester-office'}, lockedExits:{south:{level:5, msg:'Chester office locked. Need Level 5'}},
+      objects:[{id:'statue', name:'Chester Statue', desc:'A cool bronze statue. Touch its paw for luck. It says - It aint easy being cheesy.'}],
+      npcs:[], machines:[]
+    },
+    'hr-office': {
+      id:'hr-office', name:'HR & Recruitment', desc:'HR office with buzzing fluorescent lights. Papers shuffle. Maria sits at a desk stamping badges. A motivational poster says Safety is Cheesy.',
+      ambience:'office', exits:{south:'lobby', east:'r-and-d', north:'mixing-lab'}, objects:[{id:'badge-printer', name:'Badge Printer', desc:'Prints employee badges. Interact to get promoted.'}], npcs:['maria-hr'], machines:[]
+    },
+    'r-and-d': {
+      id:'r-and-d', name:'R&D Flavor Lab', desc:'White lab coats, beakers of orange powder. The air tingles with experimental spices. Dr. Powder mutters about capsaicin levels.',
+      ambience:'lab', exits:{west:'hr-office'}, objects:[{id:'flavor-shelf', name:'Experimental Flavor Shelf', desc:'Rare dusts. Buy with money.'}], npcs:['dr-powder'], machines:[]
+    },
+    'break-room': {
+      id:'break-room', name:'Break Room', desc:'Microwave hum, fridge buzz. Half-eaten Cheetos bags on table. Co-workers gossip. Free water cooler here.',
+      ambience:'breakroom', exits:{west:'lobby', north:'quality-lab'}, objects:[{id:'water-cooler', name:'Water Cooler', desc:'Free water. Collect.'}, {id:'vending', name:'Vending Machine', desc:'Buy rare ingredients with coins.'}], npcs:['jenna-break'], machines:[]
+    },
+    'quality-lab': {
+      id:'quality-lab', name:'Quality Control Lab', desc:'Sterile lab. Machines beep testing crunch levels. Linda measures orange-ness with a colorimeter. Crunch test rig clacks.',
+      ambience:'lab', exits:{south:'break-room', west:'mixing-lab'}, objects:[{id:'crunch-tester', name:'Crunch Tester', desc:'Test your product quality for bonus money'}], npcs:['linda-quality'], machines:[]
+    },
+    'mixing-lab': {
+      id:'mixing-lab', name:'Mixing Lab', desc:'Huge stainless steel mixing vats. Cornmeal dust in air. The mixer roars like a jet. Salt bins line walls.',
+      ambience:'mixer', exits:{south:'hr-office', west:'corn-silo', east:'extruder-floor', north:'quality-lab'}, objects:[{id:'salt-bin', name:'Salt Bin', desc:'Free salt'}, {id:'water-pipe', name:'Water Pipe', desc:'Free water'}], npcs:[], machines:['mixer']
+    },
+    'corn-silo': {
+      id:'corn-silo', name:'Corn Silo', desc:'Towering silo full of golden cornmeal. You hear corn shifting like sand dunes. Carlos shovels with rhythm.',
+      ambience:'silo', exits:{east:'mixing-lab', south:'warehouse'}, objects:[{id:'corn-chute', name:'Corn Chute', desc:'Pull lever for free cornmeal'}], npcs:['carlos-silo'], machines:[]
+    },
+    'warehouse': {
+      id:'warehouse', name:'Warehouse', desc:'Forklifts beep. Pallets of ingredients stacked high. Smell of cardboard and oil. Loading bay doors rumble.',
+      ambience:'warehouse', exits:{east:'lobby', north:'corn-silo', west:'market'}, objects:[{id:'oil-drum', name:'Oil Drum', desc:'Buy vegetable oil'}, {id:'flour-pallet', name:'Flour Pallet', desc:'Buy cracker flour'}], npcs:[], machines:[]
+    },
+    'extruder-floor': {
+      id:'extruder-floor', name:'Extruder Floor', desc:'Hot, loud, vibrating. The extruder screams pushing dough through tiny holes. Steam hisses. Floor shakes.',
+      ambience:'extruder', exits:{west:'mixing-lab', east:'seasoning-tunnel', south:'packaging-line'}, objects:[], npcs:['mike-extruder'], machines:['extruder']
+    },
+    'seasoning-tunnel': {
+      id:'seasoning-tunnel', name:'Seasoning Tunnel', desc:'Long tumbling tunnel. Orange dust clouds. You sneeze. Powder coats everything. The drum tumbles like a dryer full of cheese.',
+      ambience:'seasoning', exits:{west:'extruder-floor', east:'packaging-line', south:'fryer-room'}, objects:[{id:'cheddar-hopper', name:'Cheddar Hopper', desc:'Buy cheddar dust'}, {id:'flamin-hopper', name:'Flamin Hopper', desc:'Buy flamin dust'}], npcs:['tina-seasoning'], machines:['seasoningDrum']
+    },
+    'fryer-room': {
+      id:'fryer-room', name:'Fryer & Oven Room', desc:'Intense heat. Oil bubbles violently. Sizzle and pop. Oven fans roar alternative path. Smell of fried corn is intoxicating.',
+      ambience:'fryer', exits:{north:'seasoning-tunnel', east:'packaging-line'}, objects:[], npcs:[], machines:['fryer','oven']
+    },
+    'packaging-line': {
+      id:'packaging-line', name:'Packaging Line', desc:'Conveyor belts zip. Bags crinkle, seal with psssh. Laser counters tick. Sam watches line ensuring no empty bags.',
+      ambience:'packager', exits:{west:'fryer-room', north:'seasoning-tunnel', south:'market'}, objects:[], npcs:['sam-packaging'], machines:['packager','crackerPress']
+    },
+    'market': {
+      id:'market', name:'Factory Market & Shipping', desc:'Loading docks. Trucks honk outside. Buyers shout. Jenna runs market stall buying your finished Cheetos bags for cash.',
+      ambience:'market', exits:{east:'warehouse', north:'packaging-line'}, objects:[{id:'market-stall', name:'Market Stall', desc:'Sell your Cheetos bags here for money'}], npcs:['jenna-market'], machines:[]
+    },
+    'chester-office': {
+      id:'chester-office', name:"Chester Cheetah's Office", desc:"Luxury office. Shag carpet. Chester lounges, tail swishing. Gold records on wall. He says - Welcome to the big leagues, kid. Show me what you got. Final challenge room.",
+      ambience:'chester', exits:{north:'lobby'}, objects:[{id:'golden-bowl', name:'Golden Bowl of XXXtra Dust', desc:'Legendary ingredient'}], npcs:['chester'], machines:[]
+    }
+  },
+
+  // ========= NPCS - ADD NEW NPCS HERE =========
+  npcs: {
+    'maria-hr': {
+      id:'maria-hr', name:'Maria from HR', room:'hr-office', voice:{base:220, rate:1.0, vibrato:2},
+      greet:'Welcome to Cheetos! You are intern level one. I will badge you.',
+      dialogues:[
+        { id:'intro', text:'Hey newbie! I am Maria. You want to make Cheetos? First, collect cornmeal from silo west of here, then mix dough in mixing lab. I will promote you when you level up.', quest:'tutorial-1' },
+        { id:'promote', text:'You leveled up! Come back for promotion. Higher level unlocks hotter flavors.', action:'promote' }
+      ],
+      quests:['tutorial-1']
+    },
+    'carlos-silo': {
+      id:'carlos-silo', name:'Carlos Silo Keeper', room:'corn-silo', voice:{base:120, rate:0.9, vibrato:1},
+      greet:'Hey! You need corn? Pull that chute! Free cornmeal for workers.',
+      dialogues:[
+        { id:'corn', text:'This silo holds 10 tons of corn. Take what you need. Remember: 2 corn plus 1 water makes dough. Simple.' }
+      ]
+    },
+    'dr-powder': {
+      id:'dr-powder', name:'Dr. Powder', room:'r-and-d', voice:{base:300, rate:1.2, vibrato:5},
+      greet:'Ah! Fresh nose! I am Dr. Powder, flavor scientist. I sell exotic dusts.',
+      dialogues:[
+        { id:'sell', text:'I have white cheddar, jalapeno, honey BBQ. Bring money. Also, bring me 3 classic bags and I will unlock XXXtra formula.', quest:'unlock-xxtra' }
+      ]
+    },
+    'linda-quality': {
+      id:'linda-quality', name:'Linda Quality', room:'quality-lab', voice:{base:200, rate:1.1, vibrato:2},
+      greet:'Quality check! Bring any bag, I will test crunch and pay bonus if perfect.',
+      dialogues:[
+        { id:'test', text:'My crunch-o-meter measures decibels of crunch. Perfect crunch pays double. Bring bags!' }
+      ]
+    },
+    'mike-extruder': {
+      id:'mike-extruder', name:'Mike Extruder Tech', room:'extruder-floor', voice:{base:100, rate:0.8, vibrato:0.5},
+      greet:'Extruder floor is dangerous! Wear ear plugs! Well, you got audio plugs. Need dough to extrude.',
+      dialogues:[{ id:'tip', text:'Two shapes: crunchy curls and puffs. Puffs use air injection. Choose in extruder menu.' }]
+    },
+    'tina-seasoning': {
+      id:'tina-seasoning', name:'Tina Seasoning', room:'seasoning-tunnel', voice:{base:260, rate:1.3, vibrato:3},
+      greet:'Cough cough! Orange lung! I run seasoning drum. Bring fried bases and dust!',
+      dialogues:[{ id:'tip', text:'Fried crunchy plus cheddar makes classic. Fried plus flamin makes fire! Experiment!' }]
+    },
+    'sam-packaging': {
+      id:'sam-packaging', name:'Sam Packager', room:'packaging-line', voice:{base:150, rate:1.0, vibrato:1},
+      greet:'Packaging line! Bring seasoned Cheetos, I bag them. Then sell at market west.',
+      dialogues:[{ id:'tip', text:'Bags crinkle. Sell them at market for cash. Cash buys better dusts. Cycle of cheese!' }]
+    },
+    'jenna-market': {
+      id:'jenna-market', name:'Jenna Market Buyer', room:'market', voice:{base:240, rate:1.1, vibrato:2.5},
+      greet:'Got bags? I buy! Best prices in town. Flamin hot sells high!',
+      dialogues:[{ id:'buy', text:'I pay cash for any finished bag. Flamin and XXXtra pay most. Sell now?' , action:'open-market'}]
+    },
+    'jenna-break': {
+      id:'jenna-break', name:'Jenna Break Buddy', room:'break-room', voice:{base:230, rate:1.0, vibrato:2},
+      greet:'Break time! Take water from cooler. Free. You look tired.',
+      dialogues:[{ id:'gossip', text:'Rumor: Chester in south lobby office has secret golden bowl that makes XXXtra dust. Need level 5 to enter.' }]
+    },
+    'chester': {
+      id:'chester', name:'Chester Cheetah', room:'chester-office', voice:{base:80, rate:0.7, vibrato:0.2},
+      greet:'Heh heh. It aint easy bein cheesy. You made it to my office, kid. Final test: make one of each bag and bring to me.',
+      dialogues:[
+        { id:'final', text:'You want to be Cheetos Master? Bring me one of every final product. I will give you Chester badge and unlimited golden dust.', quest:'chester-final' }
+      ]
+    }
+  },
+
+  // ========= QUESTS =========
+  quests: {
+    'tutorial-1': { id:'tutorial-1', name:'First Batch', desc:'Make 1 Classic Crunchy bag. Steps: Get cornmeal at silo, water at mixing lab, mix dough, extrude crunchy, fry, season cheddar, pack.', reward:{money:30, xp:50}, completed:false },
+    'unlock-xxtra': { id:'unlock-xxtra', name:'Spice Scientist', desc:'Bring 3 classic crunchy bags to Dr. Powder to unlock XXXtra dust in market.', reward:{xp:100, unlock:'xxtraHotPowder'}, completed:false },
+    'chester-final': { id:'chester-final', name:'Cheetos Master', desc:'Bring one of each final product to Chester.', reward:{money:500, xp:1000, unlock:'golden'}, completed:false }
+  },
+
+  // ========= LEVELS =========
+  levels: [
+    { level:1, title:'Intern', xpNeeded:0, desc:'New recruit' },
+    { level:2, title:'Line Worker', xpNeeded:100, desc:'Can make Flamin' },
+    { level:3, title:'Flavor Tech', xpNeeded:300, desc:'Can make Jalapeño and Baked' },
+    { level:4, title:'Senior Tech', xpNeeded:700, desc:'Can make Honey BBQ' },
+    { level:5, title:'Chester Elite', xpNeeded:1500, desc:'Can enter Chester office, XXXtra' },
+    { level:6, title:'Cheetos Legend', xpNeeded:3000, desc:'Master of cheese' },
+  ]
+};
+
+// ============================================================================
+// AUDIO ENGINE - 100% PROCEDURAL SYNTHESIS, 3D HRTF, SPEECH
+// ============================================================================
+class AudioEngine {
+  constructor(){
+    this.ctx=null;
+    this.master=null;
+    this.ambienceGain=null;
+    this.sfxGain=null;
+    this.speechGain=null;
+    this.ambienceNodes=[];
+    this.beaconNodes=[];
+    this.listenerPos={x:0,y:0,angle:0};
+    this.isInitialized=false;
+    this.speechRate=1.0;
+    this.use3D=true;
+    this.noiseBuffers={};
+    this.voice=null;
+  }
+  async init(){
+    if(this.isInitialized) return;
+    this.ctx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});
+    this.master = this.ctx.createGain(); this.master.gain.value=0.9; this.master.connect(this.ctx.destination);
+    this.ambienceGain = this.ctx.createGain(); this.ambienceGain.gain.value=0.25; this.ambienceGain.connect(this.master);
+    this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value=0.8; this.sfxGain.connect(this.master);
+    this.speechGain = this.ctx.createGain(); this.speechGain.gain.value=1.0; this.speechGain.connect(this.master);
+    if(this.ctx.listener && this.ctx.listener.forwardX){
+      this.ctx.listener.forwardX.value=0; this.ctx.listener.forwardY.value=0; this.ctx.listener.forwardZ.value=-1;
+      this.ctx.listener.upX.value=0; this.ctx.listener.upY.value=1; this.ctx.listener.upZ.value=0;
+    }
+    this.generateNoiseBuffers();
+    this.isInitialized=true;
+    // preload voices
+    await this.loadVoices();
+    this.log('AudioEngine initialized at '+this.ctx.sampleRate+'Hz');
+  }
+  log(m){ console.log('[Audio]',m); }
+  async loadVoices(){
+    return new Promise(res=>{
+      const check=()=>{
+        const voices=speechSynthesis.getVoices();
+        if(voices.length){ this.voice = voices.find(v=>v.lang.startsWith('en'))||voices[0]; res(); }
+        else setTimeout(check,100);
+      };
+      check();
+      speechSynthesis.onvoiceschanged=check;
+    });
+  }
+  ensure(){
+    if(!this.isInitialized) throw new Error('Audio not initialized');
+    if(this.ctx.state==='suspended') this.ctx.resume();
+  }
+  // ---- Speech ----
+  speak(text, interrupt=true, rate=null){
+    this.ensure();
+    if(interrupt) speechSynthesis.cancel();
+    // also visual log
+    window.gameLog && window.gameLog(text,'speak');
+    if(!('speechSynthesis' in window)){ return; }
+    const u = new SpeechSynthesisUtterance(text);
+    if(this.voice) u.voice=this.voice;
+    u.rate = rate||this.speechRate;
+    u.pitch=1.0; u.volume=1.0;
+    u.onstart=()=>{ document.getElementById('visualizer-bar').style.animationDuration='0.3s'; };
+    u.onend=()=>{ document.getElementById('visualizer-bar').style.animationDuration='2s'; };
+    speechSynthesis.speak(u);
+    // aria live
+    document.getElementById('aria-live').textContent=text;
+  }
+  stopSpeech(){ speechSynthesis.cancel(); }
+  setSpeechRate(r){ this.speechRate=Math.max(0.5,Math.min(2.0,r)); }
+
+  // ---- Noise buffers ----
+  generateNoiseBuffers(){
+    const len = this.ctx.sampleRate*2;
+    const white = this.ctx.createBuffer(1,len,this.ctx.sampleRate);
+    const d = white.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    this.noiseBuffers.white=white;
+    // pink noise approx
+    const pink = this.ctx.createBuffer(1,len,this.ctx.sampleRate);
+    const pd = pink.getChannelData(0);
+    let b0,b1,b2,b3,b4,b5,b6; b0=b1=b2=b3=b4=b5=b6=0;
+    for(let i=0;i<len;i++){
+      const white=Math.random()*2-1;
+      b0=0.99886*b0+white*0.0555179; b1=0.99332*b1+white*0.0750759; b2=0.96900*b2+white*0.1538520;
+      b3=0.86650*b3+white*0.3104856; b4=0.55000*b4+white*0.5329522; b5=-0.7616*b5-white*0.0168980;
+      pd[i]=(b0+b1+b2+b3+b4+b5+b6+white*0.5362)*0.11; b6=white*0.115926;
+    }
+    this.noiseBuffers.pink=pink;
+  }
+  createNoiseSource(type='white'){
+    const src=this.ctx.createBufferSource();
+    src.buffer=this.noiseBuffers[type]||this.noiseBuffers.white;
+    src.loop=true;
+    return src;
+  }
+
+  // ---- Basic tones ----
+  tone({freq=440, duration=0.3, type='sine', volume=0.5, attack=0.01, release=0.1, filterFreq=null, pan=0, x=null, y=null, z=null}){
+    this.ensure();
+    const osc=this.ctx.createOscillator(); osc.type=type; osc.frequency.value=freq;
+    const gain=this.ctx.createGain(); gain.gain.setValueAtTime(0,this.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(volume,this.ctx.currentTime+attack);
+    gain.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+duration);
+    let last=gain;
+    let filter=null;
+    if(filterFreq){ filter=this.ctx.createBiquadFilter(); filter.type='lowpass'; filter.frequency.value=filterFreq; osc.connect(filter); filter.connect(gain); }
+    else osc.connect(gain);
+    // panning
+    if(x!==null && this.use3D){
+      const panner=this.ctx.createPanner(); panner.panningModel='HRTF'; panner.distanceModel='inverse'; panner.refDistance=1; panner.maxDistance=10; panner.rolloffFactor=1;
+      panner.positionX.value=x; panner.positionY.value=y||0; panner.positionZ.value=z||0;
+      gain.connect(panner); panner.connect(this.sfxGain); last=panner;
+    } else if(pan!==0){
+      const stereo=this.ctx.createStereoPanner(); stereo.pan.value=pan; gain.connect(stereo); stereo.connect(this.sfxGain);
+    } else {
+      gain.connect(this.sfxGain);
+    }
+    osc.start(); osc.stop(this.ctx.currentTime+duration+0.1);
+    return osc;
+  }
+  noiseTone({duration=0.5, type='white', filterFreq=1000, filterType='bandpass', volume=0.5, pan=0, x=null,y=null,z=null}){
+    this.ensure();
+    const src=this.createNoiseSource(type);
+    const filter=this.ctx.createBiquadFilter(); filter.type=filterType; filter.frequency.value=filterFreq; filter.Q.value=1;
+    const gain=this.ctx.createGain(); gain.gain.value=volume;
+    gain.gain.setValueAtTime(volume,this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+duration);
+    src.connect(filter); filter.connect(gain);
+    if(x!==null && this.use3D){
+      const panner=this.ctx.createPanner(); panner.panningModel='HRTF'; panner.positionX.value=x; panner.positionY.value=y||0; panner.positionZ.value=z||0;
+      gain.connect(panner); panner.connect(this.sfxGain);
+    } else if(pan!==0){
+      const stereo=this.ctx.createStereoPanner(); stereo.pan.value=pan; gain.connect(stereo); stereo.connect(this.sfxGain);
+    } else gain.connect(this.sfxGain);
+    src.start(); src.stop(this.ctx.currentTime+duration);
+  }
+
+  // ---- Earcons & Game Sounds ----
+  playEarcon(name){
+    switch(name){
+      case 'menu-blip': this.tone({freq:800, duration:0.12, type:'sine', volume:0.4}); break;
+      case 'menu-select': this.tone({freq:600, duration:0.1, volume:0.5}); setTimeout(()=>this.tone({freq:1200, duration:0.2, volume:0.5}),80); break;
+      case 'menu-back': this.tone({freq:900, duration:0.1, volume:0.4}); setTimeout(()=>this.tone({freq:400, duration:0.25, volume:0.4}),90); break;
+      case 'footstep': this.footstep(); break;
+      case 'bump': this.tone({freq:120, duration:0.3, type:'square', volume:0.6, filterFreq:400}); break;
+      case 'door': this.door(); break;
+      case 'collect': this.collect(); break;
+      case 'success': this.success(); break;
+      case 'fail': this.fail(); break;
+      case 'coin': this.coin(); break;
+      default: this.tone({freq:440, duration:0.2});
+    }
+  }
+  footstep(){
+    this.noiseTone({duration:0.12, filterFreq:300, filterType:'bandpass', volume:0.4});
+    this.tone({freq:80+Math.random()*40, duration:0.15, type:'sine', volume:0.5});
+  }
+  door(){
+    this.noiseTone({duration:0.4, filterFreq:800, volume:0.3});
+    this.tone({freq:200, duration:0.5, type:'sawtooth', volume:0.3, filterFreq:600});
+    setTimeout(()=>this.tone({freq:600, duration:0.3, volume:0.4}),150);
+  }
+  collect(){
+    [0,2,4,7].forEach((st,i)=>setTimeout(()=>this.tone({freq:400*Math.pow(1.25,st), duration:0.25, volume:0.5}), i*90));
+  }
+  success(){
+    [0,4,7,12].forEach((st,i)=>setTimeout(()=>this.tone({freq:261.63*Math.pow(2,st/12), duration:0.4, volume:0.5, type:'sine'}), i*120));
+  }
+  fail(){
+    this.tone({freq:300, duration:0.3, type:'sawtooth', volume:0.5});
+    setTimeout(()=>this.tone({freq:200, duration:0.5, type:'sawtooth', volume:0.5}),150);
+  }
+  coin(){
+    this.tone({freq:1200, duration:0.15, volume:0.5}); setTimeout(()=>this.tone({freq:1800, duration:0.3, volume:0.5}),100);
+  }
+
+  // Procedural ingredient sounds
+  playIngredientSound(id){
+    switch(id){
+      case 'pour_grain': // cornmeal
+        this.noiseTone({duration:1.2, filterFreq:1200, filterType:'bandpass', volume:0.5});
+        for(let i=0;i<6;i++) setTimeout(()=>this.tone({freq:200+Math.random()*800, duration:0.08, volume:0.3, type:'square'}), i*150);
+        break;
+      case 'pour_water':
+        this.noiseTone({duration:0.8, filterFreq:2000, filterType:'highpass', volume:0.3});
+        this.tone({freq:800, duration:0.6, type:'sine', volume:0.2, filterFreq:1000});
+        break;
+      case 'pour_oil':
+        this.noiseTone({duration:1.0, filterFreq:400, filterType:'lowpass', volume:0.4});
+        this.tone({freq:150, duration:1.0, type:'sine', volume:0.3});
+        break;
+      case 'puff_powder':
+        this.noiseTone({duration:0.6, filterFreq:3000, filterType:'highpass', volume:0.4});
+        this.tone({freq:1200, duration:0.5, type:'sine', volume:0.2});
+        break;
+      case 'puff_spicy':
+        this.noiseTone({duration:0.7, filterFreq:2500, filterType:'bandpass', volume:0.5});
+        this.tone({freq:200, duration:0.3, type:'sawtooth', volume:0.3});
+        setTimeout(()=>this.tone({freq:800, duration:0.2, volume:0.4}),100);
+        break;
+      case 'sprinkle':
+        for(let i=0;i<10;i++) setTimeout(()=>this.tone({freq:3000+Math.random()*2000, duration:0.05, volume:0.2}), i*60);
+        break;
+      default: this.collect();
+    }
+  }
+  playMachineSound(machineId){
+    switch(machineId){
+      case 'mixer':
+        this.tone({freq:60, duration:2.0, type:'sawtooth', volume:0.4, filterFreq:300});
+        this.tone({freq:120, duration:2.0, type:'square', volume:0.2});
+        this.noiseTone({duration:2.0, filterFreq:500, volume:0.2});
+        break;
+      case 'extruder':
+        this.tone({freq:80, duration:1.5, type:'sawtooth', volume:0.5});
+        for(let i=0;i<8;i++) setTimeout(()=>this.tone({freq:400, duration:0.1, type:'square', volume:0.4}), i*180);
+        break;
+      case 'extruder_puff':
+        this.tone({freq:100, duration:1.2, type:'sine', volume:0.4});
+        this.noiseTone({duration:0.8, filterFreq:800, volume:0.5});
+        setTimeout(()=>this.tone({freq:600, duration:0.4, volume:0.5}),600);
+        break;
+      case 'fryer':
+        this.noiseTone({duration:2.5, filterFreq:4000, filterType:'highpass', volume:0.5});
+        for(let i=0;i<20;i++) setTimeout(()=>this.tone({freq:1000+Math.random()*2000, duration:0.05, volume:0.15}), i*120);
+        break;
+      case 'oven':
+        this.tone({freq:100, duration:2.0, type:'sine', volume:0.3});
+        this.noiseTone({duration:2.0, filterFreq:200, filterType:'lowpass', volume:0.3});
+        break;
+      case 'seasoning':
+        this.noiseTone({duration:2.0, filterFreq:1500, filterType:'bandpass', volume:0.4});
+        for(let i=0;i<5;i++) setTimeout(()=>this.tone({freq:200, duration:0.3, type:'square', volume:0.3}), i*350);
+        break;
+      case 'seasoning_spicy':
+        this.noiseTone({duration:2.0, filterFreq:2500, filterType:'bandpass', volume:0.5});
+        this.tone({freq:150, duration:0.5, type:'sawtooth', volume:0.4});
+        break;
+      case 'packager':
+        this.noiseTone({duration:0.3, filterFreq:5000, volume:0.4}); // crinkle
+        setTimeout(()=>{ this.tone({freq:800, duration:0.1, volume:0.5}); this.tone({freq:200, duration:0.2, volume:0.4}); },300);
+        break;
+    }
+  }
+
+  // ---- 3D Beacons for exits ----
+  clearBeacons(){
+    this.beaconNodes.forEach(n=>{ try{n.osc.stop(); n.src&&n.src.stop();}catch(e){} });
+    this.beaconNodes=[];
+  }
+  playExitBeacon(dir, angleDeg, distance=2){
+    const rad = angleDeg*Math.PI/180;
+    const x = Math.sin(rad)*distance;
+    const z = -Math.cos(rad)*distance;
+    const freqMap={north:440, east:550, south:330, west:660};
+    const freq=freqMap[dir]||440;
+    const osc=this.ctx.createOscillator(); osc.frequency.value=freq; osc.type='sine';
+    const gain=this.ctx.createGain(); gain.gain.value=0.0;
+    const panner=this.ctx.createPanner(); panner.panningModel='HRTF'; panner.positionX.value=x; panner.positionY.value=0; panner.positionZ.value=z;
+    osc.connect(gain); gain.connect(panner); panner.connect(this.sfxGain);
+    // pulsating
+    const now=this.ctx.currentTime;
+    gain.gain.setValueAtTime(0,now);
+    gain.gain.linearRampToValueAtTime(0.25,now+0.05);
+    gain.gain.linearRampToValueAtTime(0,now+0.4);
+    osc.start();
+    // loop pulse every 1.5s
+    const interval=setInterval(()=>{
+      if(this.ctx.state==='suspended') return;
+      const t=this.ctx.currentTime;
+      gain.gain.cancelScheduledValues(t);
+      gain.gain.setValueAtTime(0,t);
+      gain.gain.linearRampToValueAtTime(0.25,t+0.05);
+      gain.gain.linearRampToValueAtTime(0,t+0.4);
+    },1500);
+    this.beaconNodes.push({osc, gain, panner, interval, dir});
+    return {osc, interval};
+  }
+  updateListener(x,y,angleDeg){
+    this.listenerPos={x,y,angle:angleDeg};
+    if(!this.ctx||!this.ctx.listener) return;
+    const rad=angleDeg*Math.PI/180;
+    const fx=Math.sin(rad), fz=-Math.cos(rad);
+    if(this.ctx.listener.forwardX){
+      this.ctx.listener.forwardX.value=fx; this.ctx.listener.forwardY.value=0; this.ctx.listener.forwardZ.value=fz;
+      this.ctx.listener.upX.value=0; this.ctx.listener.upY.value=1; this.ctx.listener.upZ.value=0;
+      this.ctx.listener.positionX.value=x; this.ctx.listener.positionY.value=0; this.ctx.listener.positionZ.value=y;
+    } else {
+      this.ctx.listener.setOrientation(fx,0,fz,0,1,0);
+      this.ctx.listener.setPosition(x,0,y);
+    }
+  }
+
+  // ---- Ambience ----
+  stopAmbience(){
+    this.ambienceNodes.forEach(n=>{ try{n.stop();}catch(e){} if(n.interval) clearInterval(n.interval); });
+    this.ambienceNodes=[];
+    this.ambienceGain.gain.value=0.25;
+  }
+  startAmbience(roomId){
+    this.stopAmbience();
+    this.ensure();
+    const room = GAME_DATA.rooms[roomId];
+    if(!room) return;
+    const type=room.ambience;
+    const createLoop=(freq, vol, type='sine', filter=null)=>{
+      const osc=this.ctx.createOscillator(); osc.type=type; osc.frequency.value=freq;
+      const gain=this.ctx.createGain(); gain.gain.value=vol;
+      osc.connect(gain); gain.connect(this.ambienceGain);
+      osc.start();
+      this.ambienceNodes.push(osc);
+      return {osc,gain};
+    };
+    const createNoiseLoop=(filterFreq, vol, ftype='lowpass')=>{
+      const src=this.createNoiseSource('pink');
+      const filter=this.ctx.createBiquadFilter(); filter.type=ftype; filter.frequency.value=filterFreq;
+      const gain=this.ctx.createGain(); gain.gain.value=vol;
+      src.connect(filter); filter.connect(gain); gain.connect(this.ambienceGain);
+      src.start();
+      this.ambienceNodes.push(src);
+      return {src,filter,gain};
+    };
+    switch(type){
+      case 'lobby':
+        createLoop(60,0.08,'sine'); createLoop(120,0.04,'triangle');
+        createNoiseLoop(400,0.08,'lowpass');
+        break;
+      case 'office':
+        createLoop(100,0.05,'sine'); createNoiseLoop(800,0.05,'bandpass');
+        // fluorescent flicker
+        const flicker=setInterval(()=>{ if(Math.random()<0.1) this.tone({freq:1000+Math.random()*500, duration:0.05, volume:0.05}); },800);
+        this.ambienceNodes.push({interval:flicker, stop:()=>clearInterval(flicker)});
+        break;
+      case 'lab':
+        createLoop(200,0.04,'sine'); createLoop(400,0.03,'sine');
+        createNoiseLoop(1200,0.06,'bandpass');
+        break;
+      case 'breakroom':
+        createLoop(60,0.06,'sine'); // fridge
+        createNoiseLoop(300,0.04);
+        break;
+      case 'mixer':
+        createLoop(50,0.12,'sawtooth'); createLoop(100,0.08,'square');
+        createNoiseLoop(600,0.08);
+        break;
+      case 'silo':
+        createNoiseLoop(200,0.12,'lowpass');
+        createLoop(30,0.06,'sine');
+        break;
+      case 'warehouse':
+        createLoop(70,0.07,'sine'); createNoiseLoop(500,0.05);
+        const beep=setInterval(()=>{ if(Math.random()<0.2){ this.tone({freq:800, duration:0.3, volume:0.15, pan:-0.5}); } },3000);
+        this.ambienceNodes.push({interval:beep, stop:()=>clearInterval(beep)});
+        break;
+      case 'extruder':
+        createLoop(60,0.15,'sawtooth'); createLoop(180,0.08,'square');
+        createNoiseLoop(800,0.1);
+        break;
+      case 'seasoning':
+        createLoop(90,0.08,'sawtooth'); createNoiseLoop(1000,0.12,'bandpass');
+        break;
+      case 'fryer':
+        createNoiseLoop(3500,0.15,'highpass'); createLoop(120,0.06,'sine');
+        break;
+      case 'packager':
+        createLoop(100,0.05,'sine');
+        const tick=setInterval(()=>{ this.tone({freq:600, duration:0.05, volume:0.1}); },700);
+        this.ambienceNodes.push({interval:tick, stop:()=>clearInterval(tick)});
+        break;
+      case 'market':
+        createNoiseLoop(400,0.08); createLoop(150,0.04,'sine');
+        break;
+      case 'chester':
+        createLoop(40,0.1,'sine'); createLoop(80,0.05,'triangle');
+        break;
+    }
+  }
+
+  // ---- Speaker Test ----
+  async testSpeakers(){
+    this.speak('Testing speakers. Headphones recommended.', true);
+    await new Promise(r=>setTimeout(r,1800));
+    this.speak('Left channel.', true); this.tone({freq:440, duration:0.8, pan:-1, volume:0.7}); await new Promise(r=>setTimeout(r,1200));
+    this.speak('Right channel.', true); this.tone({freq:440, duration:0.8, pan:1, volume:0.7}); await new Promise(r=>setTimeout(r,1200));
+    this.speak('Center.', true); this.tone({freq:440, duration:0.8, pan:0, volume:0.7}); await new Promise(r=>setTimeout(r,1200));
+    this.speak('Now, sound will circle around your head. Follow it with your ears. North, East, South, West.', true);
+    await new Promise(r=>setTimeout(r,2500));
+    // circle
+    let angle=0;
+    const osc=this.ctx.createOscillator(); osc.frequency.value=440; osc.type='sine';
+    const gain=this.ctx.createGain(); gain.gain.value=0.4;
+    const panner=this.ctx.createPanner(); panner.panningModel='HRTF';
+    osc.connect(gain); gain.connect(panner); panner.connect(this.sfxGain);
+    osc.start();
+    const interval=setInterval(()=>{
+      angle+=5; if(angle>=360){ clearInterval(interval); osc.stop(); this.speak('Circle test complete. If you heard movement, 3D audio works!', true); return; }
+      const rad=angle*Math.PI/180;
+      panner.positionX.value=Math.sin(rad)*2;
+      panner.positionZ.value=-Math.cos(rad)*2;
+    },60);
+  }
+}
+
+// ============================================================================
+// GAME ENGINE - DATA DRIVEN
+// ============================================================================
+class Game {
+  constructor(audio){
+    this.audio=audio;
+    this.player={
+      location:'lobby',
+      x:0,y:0,angle:0, // for 3D listener
+      inventory:{},
+      money:20,
+      xp:0,
+      level:1,
+      title:'Intern',
+      quests:{},
+      unlocked:{cornmeal:true, water:true, salt:true},
+      stats:{bagsMade:0, steps:0}
+    };
+    this.roomPositions={
+      'lobby':{x:0,y:0}, 'hr-office':{x:0,y:1}, 'r-and-d':{x:1,y:1}, 'break-room':{x:1,y:0},
+      'quality-lab':{x:1,y:1}, 'mixing-lab':{x:0,y:2}, 'corn-silo':{x:-1,y:2}, 'warehouse':{x:-1,y:0},
+      'extruder-floor':{x:1,y:2}, 'seasoning-tunnel':{x:2,y:2}, 'fryer-room':{x:2,y:1}, 'packaging-line':{x:2,y:0},
+      'market':{x:-2,y:0}, 'chester-office':{x:0,y:-1}
+    };
+    this.dirAngles={north:0, east:90, south:180, west:270};
+    this.isPaused=false;
+    this.menuStack=[];
+  }
+  log(msg,cls=''){ window.gameLog(msg,cls); }
+  // ---- Save/Load ----
+  save(){
+    try{ localStorage.setItem('cheetosAudioFactorySave_v1', JSON.stringify(this.player)); this.log('Game saved.','sys'); this.audio.playEarcon('coin'); }catch(e){ this.log('Save failed: '+e,'sys'); }
+  }
+  load(){
+    try{
+      const data=localStorage.getItem('cheetosAudioFactorySave_v1');
+      if(!data) return false;
+      this.player=JSON.parse(data);
+      this.log('Game loaded. Welcome back!','sys');
+      return true;
+    }catch(e){ return false; }
+  }
+  hasSave(){ return !!localStorage.getItem('cheetosAudioFactorySave_v1'); }
+
+  // ---- Level ----
+  checkLevel(){
+    const levels=GAME_DATA.levels.slice().reverse();
+    for(const lvl of levels){
+      if(this.player.xp>=lvl.xpNeeded && this.player.level<lvl.level){
+        this.player.level=lvl.level; this.player.title=lvl.title;
+        this.audio.speak(`Promotion! You are now Level ${lvl.level} ${lvl.title}. ${lvl.desc}`, true);
+        this.log(`*** PROMOTION! Level ${lvl.level} ${lvl.title} ***`,'sys');
+        this.audio.playEarcon('success');
+        this.save();
+        break;
+      }
+    }
+    // update UI
+    document.getElementById('level-display').textContent=`LVL ${this.player.level} ${this.player.title}`;
+  }
+
+  // ---- Room ----
+  enterRoom(roomId, fromDir=null){
+    const room=GAME_DATA.rooms[roomId];
+    if(!room){ this.audio.speak('Room not found'); return; }
+    // check locked
+    if(roomId==='chester-office' && this.player.level<5){
+      this.audio.speak('Chester office locked. You need Level 5. You are level '+this.player.level);
+      this.audio.playEarcon('fail'); this.audio.playEarcon('bump'); return;
+    }
+    this.player.location=roomId;
+    const pos=this.roomPositions[roomId]||{x:0,y:0};
+    this.player.x=pos.x; this.player.y=pos.y;
+    if(fromDir){ // face opposite of entry? face into room
+      const opposite={north:180, south:0, east:270, west:90};
+      if(opposite[fromDir]) this.player.angle=opposite[fromDir];
+    }
+    this.audio.updateListener(pos.x,pos.y,this.player.angle);
+    this.audio.startAmbience(roomId);
+    this.audio.playEarcon('door');
+    this.describeRoom(true);
+    document.getElementById('location-display').textContent=room.name.toUpperCase();
+    this.player.stats.steps++;
+    this.checkQuests();
+    this.save();
+  }
+  describeRoom(full=true){
+    const room=GAME_DATA.rooms[this.player.location];
+    if(!room) return;
+    this.log(`\n=== ${room.name} ===`,'room');
+    this.log(room.desc);
+    // speak
+    let speech=`${room.name}. ${room.desc}`;
+    // exits
+    const exits=Object.keys(room.exits);
+    if(exits.length){
+      const exitText=exits.join(', ');
+      this.log(`Exits: ${exitText}`,'sys');
+      speech+=` Exits: ${exitText}.`;
+    }
+    // objects
+    if(room.objects && room.objects.length){
+      const objNames=room.objects.map(o=>o.name).join(', ');
+      this.log(`Objects: ${objNames}`,'sys');
+      speech+=` Objects here: ${objNames}.`;
+    }
+    // npcs
+    if(room.npcs && room.npcs.length){
+      const npcNames=room.npcs.map(id=>GAME_DATA.npcs[id]?.name||id).join(', ');
+      this.log(`People: ${npcNames}`,'sys');
+      speech+=` People here: ${npcNames}.`;
+    }
+    // machines
+    if(room.machines && room.machines.length){
+      const mNames=room.machines.map(id=>GAME_DATA.machines[id]?.name||id).join(', ');
+      this.log(`Machines: ${mNames}`,'sys');
+      speech+=` Machines: ${mNames}.`;
+    }
+    this.audio.speak(speech, true);
+    // beacons after speech a bit
+    setTimeout(()=>this.playExitBeacons(), 1200);
+  }
+  playExitBeacons(){
+    this.audio.clearBeacons();
+    const room=GAME_DATA.rooms[this.player.location];
+    if(!room) return;
+    for(const [dir,target] of Object.entries(room.exits)){
+      const baseAngle=this.dirAngles[dir]||0;
+      const relative = (baseAngle - this.player.angle + 360)%360;
+      // convert relative to panner angle: 0 is ahead, 90 right
+      this.audio.playExitBeacon(dir, relative, 2.5);
+    }
+  }
+  scanRoom(){
+    this.audio.speak(`Scanning ${GAME_DATA.rooms[this.player.location].name}.`, true);
+    this.audio.playEarcon('menu-blip');
+    setTimeout(()=>{ this.describeRoom(false); },400);
+  }
+
+  // ---- Movement ----
+  move(dir){
+    const room=GAME_DATA.rooms[this.player.location];
+    if(!room) return;
+    const target=room.exits[dir];
+    if(!target){
+      this.audio.playEarcon('bump');
+      this.audio.speak(`No exit to ${dir}. Available: ${Object.keys(room.exits).join(', ')}`);
+      return;
+    }
+    // check locked exits
+    if(room.lockedExits && room.lockedExits[dir]){
+      const lock=room.lockedExits[dir];
+      if(this.player.level < lock.level){
+        this.audio.speak(lock.msg); this.audio.playEarcon('fail'); return;
+      }
+    }
+    this.audio.playEarcon('footstep');
+    setTimeout(()=>this.enterRoom(target, dir), 250);
+  }
+  turn(delta){
+    this.player.angle=(this.player.angle+delta+360)%360;
+    this.audio.updateListener(this.player.x,this.player.y,this.player.angle);
+    const dirs=['north','east','south','west'];
+    const idx=Math.round(this.player.angle/90)%4;
+    const facing=dirs[idx]||'north';
+    this.audio.speak(`Facing ${facing}`, true);
+    this.audio.playEarcon('menu-blip');
+    this.playExitBeacons();
+  }
+  turnTo(dir){
+    const angle=this.dirAngles[dir];
+    if(angle!==undefined){ this.player.angle=angle; this.audio.updateListener(this.player.x,this.player.y,angle); this.audio.speak(`Facing ${dir}`); this.playExitBeacons(); }
+  }
+
+  // ---- Inventory ----
+  addItem(id, qty=1){
+    this.player.inventory[id]=(this.player.inventory[id]||0)+qty;
+    this.updateMoneyUI();
+  }
+  removeItem(id, qty=1){
+    if(!this.player.inventory[id]||this.player.inventory[id]<qty) return false;
+    this.player.inventory[id]-=qty;
+    if(this.player.inventory[id]<=0) delete this.player.inventory[id];
+    this.updateMoneyUI();
+    return true;
+  }
+  hasItem(id, qty=1){ return (this.player.inventory[id]||0)>=qty; }
+  getInventoryText(){
+    const inv=this.player.inventory;
+    const keys=Object.keys(inv);
+    if(!keys.length) return 'Your bag is empty.';
+    let text='Your bag contains: ';
+    let log='--- INVENTORY ---\n';
+    keys.forEach(k=>{
+      const name = (GAME_DATA.ingredients[k]?.name || GAME_DATA.intermediates[k]?.name || k);
+      const qty=inv[k];
+      text+=`${qty} ${name}, `;
+      log+=`${name} x${qty}\n`;
+    });
+    text+=` Money: $${this.player.money}, XP: ${this.player.xp}, Level: ${this.player.level} ${this.player.title}.`;
+    log+=`\nMoney: $${this.player.money}\nXP: ${this.player.xp}\nLevel: ${this.player.level} ${this.player.title}\nBags made: ${this.player.stats.bagsMade}`;
+    this.log(log,'sys');
+    return text;
+  }
+  updateMoneyUI(){ document.getElementById('money-display').textContent=`$${this.player.money}`; }
+
+  // ---- Interaction ----
+  interact(){
+    const room=GAME_DATA.rooms[this.player.location];
+    if(!room) return;
+    const options=[];
+    // NPCs
+    (room.npcs||[]).forEach(npcId=>{ const npc=GAME_DATA.npcs[npcId]; if(npc) options.push({type:'npc', id:npcId, name:`Talk to ${npc.name}`, obj:npc}); });
+    // Objects
+    (room.objects||[]).forEach(o=> options.push({type:'object', id:o.id, name:o.name, obj:o}));
+    // Machines
+    (room.machines||[]).forEach(mId=>{ const m=GAME_DATA.machines[mId]; if(m) options.push({type:'machine', id:mId, name:`Use ${m.name}`, obj:m}); });
+    if(!options.length){ this.audio.speak('Nothing to interact with here. Try moving.'); return; }
+    this.showInteractMenu(options);
+  }
+  showInteractMenu(options){
+    const menuItems=options.map(o=>({label:o.name, value:o}));
+    menuItems.push({label:'Cancel', value:null});
+    this.showMenu('Interact - What?', menuItems, (selected)=>{
+      if(!selected) return;
+      const {type,id,obj}=selected;
+      if(type==='npc') this.talkToNPC(id);
+      else if(type==='object') this.interactObject(obj);
+      else if(type==='machine') this.openMachineMenu(id);
+    });
+  }
+  interactObject(obj){
+    this.log(`Interacting with ${obj.name}: ${obj.desc}`,'sys');
+    this.audio.speak(`${obj.name}. ${obj.desc}`);
+    // handle specific objects
+    switch(obj.id){
+      case 'corn-chute':
+        this.collectIngredient('cornmeal', 3);
+        break;
+      case 'salt-bin':
+        this.collectIngredient('salt', 2);
+        break;
+      case 'water-cooler':
+      case 'water-pipe':
+        this.collectIngredient('water', 3);
+        break;
+      case 'oil-drum':
+        this.buyIngredient('vegetableOil', 3);
+        break;
+      case 'flour-pallet':
+        this.buyIngredient('crackerFlour', 3);
+        break;
+      case 'cheddar-hopper':
+        this.buyIngredient('cheddarDust', 8);
+        break;
+      case 'flamin-hopper':
+        this.buyIngredient('flaminDust', 12);
+        break;
+      case 'flavor-shelf':
+        this.openFlavorShop();
+        break;
+      case 'vending':
+        this.openFlavorShop();
+        break;
+      case 'market-stall':
+        this.openMarketSell();
+        break;
+      case 'crunch-tester':
+        this.testCrunch();
+        break;
+      case 'badge-printer':
+        this.audio.speak(`Your current level is ${this.player.level} ${this.player.title}. XP ${this.player.xp}. Next promotion at ${GAME_DATA.levels.find(l=>l.level===this.player.level+1)?.xpNeeded||'MAX'} XP.`);
+        break;
+      case 'golden-bowl':
+        if(this.player.level>=5){ this.collectIngredient('xxtraHotPowder',1); this.audio.speak('Golden bowl! You got XXXtra hot powder!'); }
+        else this.audio.speak('Golden bowl is locked behind glass. Need level 5.');
+        break;
+      case 'statue':
+        this.audio.playEarcon('success'); this.audio.speak('You rub Chester statue for luck. Meow. You feel cheesier. Bonus 5 XP!'); this.player.xp+=5; this.checkLevel();
+        break;
+      default:
+        this.audio.playEarcon('collect');
+    }
+  }
+  collectIngredient(id, priceOrQty){
+    const ing=GAME_DATA.ingredients[id];
+    if(!ing) return;
+    if(ing.free){
+      const qty=2+Math.floor(Math.random()*3);
+      this.addItem(id, qty);
+      this.audio.playIngredientSound(ing.sound);
+      this.audio.speak(`Collected ${qty} ${ing.name}. You now have ${this.player.inventory[id]}.`);
+      this.log(`+${qty} ${ing.name}`,'sys');
+    } else {
+      this.buyIngredient(id, ing.buyPrice||priceOrQty);
+    }
+  }
+  buyIngredient(id, price){
+    const ing=GAME_DATA.ingredients[id];
+    if(!ing) return;
+    const cost=price||ing.buyPrice||5;
+    if(this.player.money<cost){ this.audio.speak(`Not enough money. Need $${cost}, you have $${this.player.money}. Sell bags at market.`); this.audio.playEarcon('fail'); return; }
+    this.player.money-=cost;
+    this.addItem(id,1);
+    this.audio.playIngredientSound(ing.sound);
+    this.audio.playEarcon('coin');
+    this.audio.speak(`Bought 1 ${ing.name} for $${cost}. Money left $${this.player.money}.`);
+    this.log(`Bought ${ing.name} -$${cost}`,'sys');
+    this.updateMoneyUI();
+  }
+  openFlavorShop(){
+    const available=Object.values(GAME_DATA.ingredients).filter(i=>!i.free && this.player.level>= (i.id==='xxtraHotPowder'?5:1));
+    const items=available.map(ing=>({label:`${ing.name} - $${ing.buyPrice} (you have ${this.player.inventory[ing.id]||0})`, value:ing.id}));
+    items.push({label:'Cancel', value:null});
+    this.showMenu('Flavor Shop - Buy', items, (id)=>{
+      if(!id) return;
+      const ing=GAME_DATA.ingredients[id];
+      if(ing) this.buyIngredient(id, ing.buyPrice);
+      setTimeout(()=>this.openFlavorShop(),800);
+    });
+  }
+  openMarketSell(){
+    const bags=Object.keys(this.player.inventory).filter(k=>k.endsWith('-bag'));
+    if(!bags.length){ this.audio.speak('You have no bags to sell. Make Cheetos first!'); return; }
+    const items=bags.map(bagId=>{
+      const proc=GAME_DATA.processes.find(p=>p.outputs && p.outputs[bagId]);
+      const value=proc?.value||10;
+      const qty=this.player.inventory[bagId];
+      return {label:`${bagId.replace(/-/g,' ')} x${qty} - $${value} each`, value:bagId};
+    });
+    items.push({label:'Sell ALL bags', value:'__sell_all'});
+    items.push({label:'Cancel', value:null});
+    this.showMenu('Market - Sell Bags', items, (selected)=>{
+      if(!selected) return;
+      if(selected==='__sell_all'){ this.sellAllBags(); return; }
+      this.sellBag(selected);
+      setTimeout(()=>this.openMarketSell(),700);
+    });
+  }
+  sellBag(bagId){
+    const qty=this.player.inventory[bagId]||0;
+    if(qty<=0) return;
+    const proc=GAME_DATA.processes.find(p=>p.outputs && p.outputs[bagId]);
+    const value=proc?.value||10;
+    this.removeItem(bagId,1);
+    this.player.money+=value;
+    this.audio.playEarcon('coin');
+    this.audio.speak(`Sold 1 ${bagId.replace(/-/g,' ')} for $${value}. Money $${this.player.money}.`);
+    this.log(`Sold ${bagId} +$${value}`,'sys');
+    this.updateMoneyUI();
+    this.checkQuests();
+  }
+  sellAllBags(){
+    let total=0, count=0;
+    Object.keys(this.player.inventory).forEach(bagId=>{
+      if(!bagId.endsWith('-bag')) return;
+      const qty=this.player.inventory[bagId];
+      const proc=GAME_DATA.processes.find(p=>p.outputs && p.outputs[bagId]);
+      const value=proc?.value||10;
+      total+=qty*value; count+=qty;
+      delete this.player.inventory[bagId];
+    });
+    if(count===0){ this.audio.speak('No bags.'); return; }
+    this.player.money+=total;
+    this.audio.playEarcon('success');
+    this.audio.speak(`Sold ${count} bags for $${total}. Total money $${this.player.money}.`);
+    this.log(`Sold ALL ${count} bags +$${total}`,'sys');
+    this.updateMoneyUI();
+  }
+  testCrunch(){
+    const bags=Object.keys(this.player.inventory).filter(k=>k.endsWith('-bag'));
+    if(!bags.length){ this.audio.speak('Bring a bag to test crunch.'); return; }
+    const bagId=bags[Math.floor(Math.random()*bags.length)];
+    const quality=Math.random();
+    if(quality>0.7){
+      const bonus=10; this.player.money+=bonus;
+      this.audio.speak(`Crunch test: Perfect! ${bagId} is extra crunchy! Bonus $${bonus}.`); this.audio.playEarcon('success');
+    } else {
+      this.audio.speak(`Crunch test: Good. ${bagId} passes quality. Crunch level ${Math.floor(quality*100)} percent.`);
+    }
+  }
+
+  // ---- NPC Talk ----
+  talkToNPC(npcId){
+    const npc=GAME_DATA.npcs[npcId];
+    if(!npc) return;
+    this.log(`Talking to ${npc.name}: ${npc.greet}`,'sys');
+    this.audio.speak(`${npc.name} says: ${npc.greet}`, true);
+    // simple dialogue: pick first
+    if(npc.dialogues && npc.dialogues.length){
+      const dlg=npc.dialogues[0];
+      setTimeout(()=>{
+        this.audio.speak(dlg.text);
+        if(dlg.action==='promote'){ this.audio.speak(`You are level ${this.player.level} ${this.player.title}.`); }
+        if(dlg.action==='open-market'){ setTimeout(()=>this.openMarketSell(),1000); }
+        if(dlg.quest){ this.startQuest(dlg.quest); }
+      },1200);
+    }
+    // voice effect: play tone with NPC voice profile
+    this.playNPCVoice(npc);
+  }
+  playNPCVoice(npc){
+    const base=npc.voice?.base||200;
+    for(let i=0;i<4;i++) setTimeout(()=>{ this.audio.tone({freq:base+Math.random()*100, duration:0.15, type:'sawtooth', volume:0.15, filterFreq:800}); }, i*180);
+  }
+  startQuest(qId){
+    const quest=GAME_DATA.quests[qId];
+    if(!quest) return;
+    if(this.player.quests[qId]) return;
+    this.player.quests[qId]={started:true, completed:false};
+    this.log(`NEW QUEST: ${quest.name} - ${quest.desc}`,'sys');
+    this.audio.speak(`New quest: ${quest.name}. ${quest.desc}`);
+  }
+  checkQuests(){
+    for(const [qId,state] of Object.entries(this.player.quests)){
+      if(state.completed) continue;
+      const quest=GAME_DATA.quests[qId];
+      if(!quest) continue;
+      let completed=false;
+      if(qId==='tutorial-1'){
+        if(this.hasItem('classic-crunchy-bag',1)) completed=true;
+      } else if(qId==='unlock-xxtra'){
+        if(this.hasItem('classic-crunchy-bag',3)) completed=true;
+      } else if(qId==='chester-final'){
+        const finals=GAME_DATA.processes.filter(p=>p.final).map(p=>Object.keys(p.outputs)[0]);
+        completed=finals.every(f=>this.hasItem(f,1));
+      }
+      if(completed){
+        state.completed=true;
+        this.player.money+=quest.reward.money||0;
+        this.player.xp+=quest.reward.xp||0;
+        this.log(`QUEST COMPLETE: ${quest.name}! Reward: $${quest.reward.money||0} XP ${quest.reward.xp||0}`,'sys');
+        this.audio.speak(`Quest complete! ${quest.name}! Reward ${quest.reward.money||0} dollars and ${quest.reward.xp||0} XP.`, true);
+        this.audio.playEarcon('success');
+        if(quest.reward.unlock){ this.player.unlocked[quest.reward.unlock]=true; this.audio.speak(`Unlocked ${quest.reward.unlock}!`); }
+        this.checkLevel();
+        this.save();
+      }
+    }
+  }
+
+  // ---- Machines ----
+  openMachineMenu(machineId){
+    const machine=GAME_DATA.machines[machineId];
+    if(!machine){ this.audio.speak('Machine not found'); return; }
+    this.log(`Using ${machine.name}: ${machine.desc}`,'sys');
+    this.audio.speak(`${machine.name}. ${machine.desc}`);
+    this.audio.playMachineSound(machine.sound);
+    // find processes for this machine that player level unlocks
+    const available=GAME_DATA.processes.filter(p=>p.machine===machineId && this.player.level>=p.unlockLevel);
+    if(!available.length){ this.audio.speak('No recipes unlocked for this machine yet. Level up!'); return; }
+    const craftable=available.filter(p=>{
+      for(const [ing,qty] of Object.entries(p.inputs)){ if(!this.hasItem(ing, qty)) return false; }
+      return true;
+    });
+    const items=available.map(p=>{
+      const canCraft=craftable.includes(p);
+      const inputs=Object.entries(p.inputs).map(([k,q])=>`${q} ${k}`).join(', ');
+      const outputs=Object.entries(p.outputs).map(([k,q])=>`${q} ${k}`).join(', ');
+      const status=canCraft?'✓ CAN MAKE':'✗ missing ingredients';
+      return {label:`${p.name} - ${status} | Needs: ${inputs} -> Makes: ${outputs}`, value:p.id, disabled:!canCraft};
+    });
+    items.push({label:'Cancel', value:null});
+    this.showMenu(`${machine.name} - Recipes (Level ${this.player.level})`, items, (procId)=>{
+      if(!procId) return;
+      this.craft(procId);
+      setTimeout(()=>this.openMachineMenu(machineId),1000);
+    });
+  }
+  craft(procId){
+    const proc=GAME_DATA.processes.find(p=>p.id===procId);
+    if(!proc){ this.audio.speak('Recipe not found'); return; }
+    // check inputs
+    for(const [ing,qty] of Object.entries(proc.inputs)){
+      if(!this.hasItem(ing, qty)){ this.audio.speak(`Missing ${qty} ${ing}. You have ${this.player.inventory[ing]||0}.`); this.audio.playEarcon('fail'); return; }
+    }
+    // consume
+    for(const [ing,qty] of Object.entries(proc.inputs)) this.removeItem(ing, qty);
+    // produce
+    for(const [out,qty] of Object.entries(proc.outputs)) this.addItem(out, qty);
+    this.audio.playMachineSound(proc.sound);
+    this.audio.playEarcon('success');
+    const outNames=Object.entries(proc.outputs).map(([k,q])=>`${q} ${k}`).join(', ');
+    this.audio.speak(`Made ${outNames}! ${proc.desc}`);
+    this.log(`Crafted: ${proc.name} -> ${outNames} +${proc.xp} XP`,'sys');
+    this.player.xp+=proc.xp||5;
+    if(proc.final) this.player.stats.bagsMade++;
+    this.checkLevel();
+    this.checkQuests();
+    this.save();
+  }
+
+  // ---- Menu System ----
+  showMenu(title, items, callback){
+    const overlay=document.getElementById('menu-overlay');
+    const box=document.getElementById('menu-box');
+    box.innerHTML=`<h2>${title}</h2><div id="menu-items"></div><p style="margin-top:1rem;font-size:0.8rem;color:#aaa">Use ↑↓ or W/S to navigate, ENTER to select, ESC to cancel. Touch: tap item.</p>`;
+    const container=box.querySelector('#menu-items');
+    let selected=0;
+    const render=()=>{
+      container.innerHTML='';
+      items.forEach((it,i)=>{
+        const div=document.createElement('div');
+        div.className='menu-item'+(i===selected?' selected':'');
+        div.textContent=it.label;
+        if(it.disabled) div.style.opacity='0.5';
+        div.onclick=()=>{ selected=i; choose(); };
+        container.appendChild(div);
+      });
+    };
+    const speakCurrent=()=>{ const it=items[selected]; if(it) { this.audio.playEarcon('menu-blip'); this.audio.speak(it.label, true); } };
+    const choose=()=>{
+      const it=items[selected];
+      if(!it) return;
+      if(it.disabled){ this.audio.playEarcon('fail'); this.audio.speak('Cannot make, missing ingredients'); return; }
+      overlay.classList.add('hidden');
+      document.removeEventListener('keydown', keyHandler);
+      this.audio.playEarcon('menu-select');
+      callback(it.value);
+    };
+    const keyHandler=(e)=>{
+      if(e.key==='ArrowUp' || e.key==='w' || e.key==='W'){ e.preventDefault(); selected=(selected-1+items.length)%items.length; render(); speakCurrent(); }
+      else if(e.key==='ArrowDown' || e.key==='s' || e.key==='S'){ e.preventDefault(); selected=(selected+1)%items.length; render(); speakCurrent(); }
+      else if(e.key==='Enter' || e.key===' '){ e.preventDefault(); choose(); }
+      else if(e.key==='Escape'){ e.preventDefault(); overlay.classList.add('hidden'); document.removeEventListener('keydown', keyHandler); this.audio.playEarcon('menu-back'); callback(null); }
+    };
+    document.addEventListener('keydown', keyHandler);
+    overlay.classList.remove('hidden');
+    render();
+    speakCurrent();
+    // touch swipe for menu?
+  }
+}
+
+// ============================================================================
+// GLOBAL LOG & UI
+// ============================================================================
+window.gameLog=(msg,cls='')=>{
+  const logEl=document.getElementById('log');
+  if(!logEl) return;
+  const line=document.createElement('div');
+  line.textContent=msg;
+  if(cls) line.className=cls;
+  logEl.appendChild(line);
+  logEl.scrollTop=logEl.scrollHeight;
+  // keep max 500 lines
+  while(logEl.children.length>500) logEl.removeChild(logEl.firstChild);
+};
+
+// ============================================================================
+// BOOT & MAIN MENU
+// ============================================================================
+let audioEngine=null;
+let game=null;
+let currentMenu=null;
+let menuIndex=0;
+const mainMenuOptions=()=>{
+  const opts=[
+    {id:'start', label:'Start New Shift - Begin as Intern'},
+    {id:'load', label:'Continue Shift - Load Save', disabled:!(game && game.hasSave())},
+    {id:'test', label:'Test Speakers - Check 3D Audio Left Right'},
+    {id:'howto', label:'How to Play - Learn Controls'},
+    {id:'settings', label:'Settings - Speech Rate and 3D Audio'},
+  ];
+  return opts;
+};
+function showMainMenu(){
+  const overlay=document.getElementById('menu-overlay');
+  const box=document.getElementById('menu-box');
+  const opts=mainMenuOptions();
+  let sel=0;
+  const render=()=>{
+    box.innerHTML=`<h2>🧀 CHEETOS FACTORY AUDIO OPS - MAIN MENU</h2><div id="main-menu-items"></div><p style="margin-top:1rem;color:#aaa;font-size:0.85rem">Arrow keys / W S to move, ENTER to select. Touch tap. ESC in game for pause.</p>`;
+    const cont=box.querySelector('#main-menu-items');
+    opts.forEach((o,i)=>{
+      const d=document.createElement('div'); d.className='menu-item'+(i===sel?' selected':''); d.textContent=o.label; if(o.disabled) d.style.opacity='0.4';
+      d.onclick=()=>{ sel=i; activate(); };
+      cont.appendChild(d);
+    });
+  };
+  const speak=()=>{ const o=opts[sel]; if(o){ audioEngine.playEarcon('menu-blip'); audioEngine.speak(o.label, true); } };
+  const activate=()=>{
+    const o=opts[sel];
+    if(o.disabled){ audioEngine.playEarcon('fail'); audioEngine.speak('Option disabled. No save found.'); return; }
+    audioEngine.playEarcon('menu-select');
+    if(o.id==='start'){ overlay.classList.add('hidden'); startNewGame(); }
+    else if(o.id==='load'){ overlay.classList.add('hidden'); loadGame(); }
+    else if(o.id==='test'){ audioEngine.testSpeakers(); }
+    else if(o.id==='howto'){ showHowTo(); }
+    else if(o.id==='settings'){ showSettings(); }
+  };
+  const keyHandler=(e)=>{
+    if(e.key==='ArrowUp' || e.key==='w'){ e.preventDefault(); sel=(sel-1+opts.length)%opts.length; render(); speak(); }
+    else if(e.key==='ArrowDown' || e.key==='s'){ e.preventDefault(); sel=(sel+1)%opts.length; render(); speak(); }
+    else if(e.key==='Enter' || e.key===' '){ e.preventDefault(); activate(); }
+  };
+  document.addEventListener('keydown', keyHandler);
+  // remove handler when menu closed? We'll keep but overlay hidden check
+  const observer=new MutationObserver(()=>{ if(overlay.classList.contains('hidden')){ document.removeEventListener('keydown', keyHandler); observer.disconnect(); } });
+  observer.observe(overlay,{attributes:true});
+  overlay.classList.remove('hidden');
+  render(); speak();
+}
+function showHowTo(){
+  const overlay=document.getElementById('menu-overlay');
+  const box=document.getElementById('menu-box');
+  box.innerHTML=`
+    <h2>How to Play - Audio Only</h2>
+    <div style="text-align:left;line-height:1.6;font-size:0.95rem">
+      <p><b>Goal:</b> You are new recruit at Cheetos factory. Collect ingredients, use machines to make Cheetos, sell bags, level up to become Legend.</p>
+      <p><b>Movement:</b><br>
+      <kbd>W</kbd> or <kbd>↑</kbd> = Move North / Forward<br>
+      <kbd>S</kbd> or <kbd>↓</kbd> = Move South / Back<br>
+      <kbd>A</kbd> or <kbd>←</kbd> = Move West / Turn Left<br>
+      <kbd>D</kbd> or <kbd>→</kbd> = Move East / Turn Right<br>
+      Touch: Swipe up/down/left/right, or use on-screen arrows.</p>
+      <p><b>Interaction:</b><br>
+      <kbd>ENTER</kbd> / <kbd>SPACE</kbd> / Center Button / Tap = Interact with objects, people, machines<br>
+      <kbd>E</kbd> = Also interact<br>
+      <kbd>SPACE</kbd> (when not in menu) = Scan room again and hear 3D beacons for exits (left/right audio)</p>
+      <p><b>Other:</b><br>
+      <kbd>I</kbd> = Inventory - hear what you carry<br>
+      <kbd>H</kbd> = Help / describe room<br>
+      <kbd>ESC</kbd> = Pause menu<br>
+      <kbd>M</kbd> = Quick machine menu if machine nearby</p>
+      <p><b>Crafting Flow:</b><br>
+      1. Corn Silo (west of warehouse) = get cornmeal<br>
+      2. Mixing Lab (north of HR) = Mix dough: 2 corn + 1 water<br>
+      3. Extruder Floor (east of mixing) = Make shapes: dough -> crunchy or puff<br>
+      4. Fryer Room (south of seasoning) = Fry shapes with oil<br>
+      5. Seasoning Tunnel = Add cheese dust<br>
+      6. Packaging Line = Bag it!<br>
+      7. Market (west of warehouse) = Sell bags for money</p>
+      <p><b>3D Audio:</b> Wear headphones. Exits have beacons - you hear chime left/right/front/back. Turn to face exit. Test in main menu.</p>
+      <p><b>Accessibility:</b> All text spoken. Use screen reader + game speech. High contrast log for sighted helpers.</p>
+    </div>
+    <div class="menu-item selected" id="howto-back" role="button" tabindex="0">Back to Main Menu</div>
+  `;
+  const back=box.querySelector('#howto-back');
+  const close=()=>{ document.getElementById('menu-overlay').classList.add('hidden'); showMainMenu(); };
+  back.onclick=close;
+  box.querySelector('#howto-back').focus();
+  audioEngine.speak('How to play. Goal is to make Cheetos. Movement: W A S D or arrows. Interact with ENTER. Scan with SPACE. Inventory with I. Craft by visiting machines in order: silo, mixing, extruder, fryer, seasoning, packager, market. Use headphones for 3D audio beacons. Press Enter to go back.', true);
+  document.addEventListener('keydown', function handler(e){ if(e.key==='Enter' || e.key==='Escape'){ document.removeEventListener('keydown', handler); close(); } });
+}
+function showSettings(){
+  const overlay=document.getElementById('menu-overlay');
+  const box=document.getElementById('menu-box');
+  const renderSettings=()=>{
+    box.innerHTML=`
+      <h2>Settings</h2>
+      <div class="menu-item" data-action="rate-down">Speech Rate Slower - Current ${audioEngine.speechRate.toFixed(1)}</div>
+      <div class="menu-item" data-action="rate-up">Speech Rate Faster - Current ${audioEngine.speechRate.toFixed(1)}</div>
+      <div class="menu-item" data-action="toggle3d">3D Audio: ${audioEngine.use3D?'ON - HRTF':'OFF - Stereo'}</div>
+      <div class="menu-item selected" data-action="back">Back to Main Menu</div>
+    `;
+    box.querySelectorAll('.menu-item').forEach(el=>{
+      el.onclick=()=>{
+        const act=el.dataset.action;
+        if(act==='rate-down'){ audioEngine.setSpeechRate(audioEngine.speechRate-0.1); audioEngine.speak(`Rate ${audioEngine.speechRate.toFixed(1)}`); renderSettings(); }
+        else if(act==='rate-up'){ audioEngine.setSpeechRate(audioEngine.speechRate+0.1); audioEngine.speak(`Rate ${audioEngine.speechRate.toFixed(1)}`); renderSettings(); }
+        else if(act==='toggle3d'){ audioEngine.use3D=!audioEngine.use3D; audioEngine.speak(`3D audio ${audioEngine.use3D?'on':'off'}`); renderSettings(); }
+        else if(act==='back'){ overlay.classList.add('hidden'); showMainMenu(); }
+      };
+    });
+  };
+  renderSettings();
+  audioEngine.speak('Settings. Adjust speech rate and 3D audio.', true);
+}
+function startNewGame(){
+  game=new Game(audioEngine);
+  game.player.money=20; game.player.xp=0; game.player.level=1; game.player.inventory={}; game.player.quests={};
+  game.updateMoneyUI();
+  game.log('=== NEW SHIFT STARTED ===','sys');
+  game.log('You are intern. Welcome to Cheetos Factory! Go to HR office north for badge.', 'sys');
+  audioEngine.speak('New shift started! You are intern at Cheetos factory. Welcome! You are in lobby. North is HR office. East is break room. West is warehouse. Find corn silo to start. Press H for help. Good luck!', true);
+  document.getElementById('game-root').classList.remove('hidden');
+  game.enterRoom('lobby');
+  game.startQuest('tutorial-1');
+  setupGameInput();
+}
+function loadGame(){
+  if(!game) game=new Game(audioEngine);
+  if(game.load()){
+    document.getElementById('game-root').classList.remove('hidden');
+    game.updateMoneyUI();
+    audioEngine.speak(`Welcome back! Level ${game.player.level} ${game.player.title}. Money $${game.player.money}. Returning to ${game.player.location}.`, true);
+    game.enterRoom(game.player.location);
+    setupGameInput();
+  } else {
+    audioEngine.speak('No save found. Starting new game.');
+    startNewGame();
+  }
+}
+function setupGameInput(){
+  // Keyboard
+  document.addEventListener('keydown', gameKeyHandler);
+  // Touch buttons
+  document.getElementById('touch-up').onclick=()=>game.move('north');
+  document.getElementById('touch-down').onclick=()=>game.move('south');
+  document.getElementById('touch-left').onclick=()=>game.move('west');
+  document.getElementById('touch-right').onclick=()=>game.move('east');
+  document.getElementById('touch-center').onclick=()=>game.interact();
+  document.getElementById('btn-menu').onclick=()=>showPauseMenu();
+  document.getElementById('btn-inventory').onclick=()=>{ const txt=game.getInventoryText(); audioEngine.speak(txt, true); };
+  document.getElementById('btn-scan').onclick=()=>game.scanRoom();
+  document.getElementById('btn-help').onclick=()=>{ game.describeRoom(); audioEngine.speak('Controls: W A S D or arrows to move, ENTER to interact, I inventory, H help, SPACE scan, ESC menu.', false); };
+  // Swipe detection
+  let touchStartX=0, touchStartY=0;
+  const logEl=document.getElementById('log');
+  logEl.addEventListener('touchstart', e=>{ touchStartX=e.touches[0].clientX; touchStartY=e.touches[0].clientY; }, {passive:true});
+  logEl.addEventListener('touchend', e=>{
+    const dx=e.changedTouches[0].clientX-touchStartX;
+    const dy=e.changedTouches[0].clientY-touchStartY;
+    if(Math.abs(dx)<10 && Math.abs(dy)<10){ game.interact(); return; }
+    if(Math.abs(dx)>Math.abs(dy)){
+      if(dx>50) game.move('east'); else if(dx<-50) game.move('west');
+    } else {
+      if(dy<-50) game.move('north'); else if(dy>50) game.move('south');
+    }
+  }, {passive:true});
+}
+function gameKeyHandler(e){
+  if(document.getElementById('menu-overlay') && !document.getElementById('menu-overlay').classList.contains('hidden')) return; // menu handles its own
+  if(!game) return;
+  switch(e.key){
+    case 'w': case 'W': case 'ArrowUp': e.preventDefault(); game.move('north'); break;
+    case 's': case 'S': case 'ArrowDown': e.preventDefault(); game.move('south'); break;
+    case 'a': case 'A': case 'ArrowLeft': e.preventDefault(); game.move('west'); break;
+    case 'd': case 'D': case 'ArrowRight': e.preventDefault(); game.move('east'); break;
+    case 'q': case 'Q': e.preventDefault(); game.turn(-90); break;
+    case 'e': case 'E': e.preventDefault(); game.interact(); break;
+    case 'Enter': case ' ': e.preventDefault(); if(e.key===' ') game.scanRoom(); else game.interact(); break;
+    case 'i': case 'I': e.preventDefault(); { const txt=game.getInventoryText(); audioEngine.speak(txt, true); } break;
+    case 'h': case 'H': e.preventDefault(); game.describeRoom(); break;
+    case 'm': case 'M': e.preventDefault(); {
+      const room=GAME_DATA.rooms[game.player.location];
+      if(room.machines && room.machines.length) game.openMachineMenu(room.machines[0]);
+      else audioEngine.speak('No machine here.');
+    } break;
+    case 'Escape': e.preventDefault(); showPauseMenu(); break;
+  }
+}
+function showPauseMenu(){
+  const overlay=document.getElementById('menu-overlay');
+  const box=document.getElementById('menu-box');
+  const opts=[
+    {label:'Resume Shift', value:'resume'},
+    {label:'Scan Room - Hear Exits', value:'scan'},
+    {label:'Inventory - Hear Bag', value:'inv'},
+    {label:'Save Game', value:'save'},
+    {label:'How to Play', value:'howto'},
+    {label:'Settings', value:'settings'},
+    {label:'Main Menu - Abandon Shift', value:'main'},
+  ];
+  let sel=0;
+  const render=()=>{
+    box.innerHTML=`<h2>Pause - ${game?GAME_DATA.rooms[game.player.location].name:'Game'}</h2><div id="pause-items"></div>`;
+    const cont=box.querySelector('#pause-items');
+    opts.forEach((o,i)=>{
+      const d=document.createElement('div'); d.className='menu-item'+(i===sel?' selected':''); d.textContent=o.label;
+      d.onclick=()=>{ sel=i; activate(); }; cont.appendChild(d);
+    });
+  };
+  const speak=()=>{ audioEngine.playEarcon('menu-blip'); audioEngine.speak(opts[sel].label, true); };
+  const activate=()=>{
+    const o=opts[sel];
+    audioEngine.playEarcon('menu-select');
+    overlay.classList.add('hidden');
+    if(o.value==='resume') return;
+    else if(o.value==='scan'){ game.scanRoom(); }
+    else if(o.value==='inv'){ const txt=game.getInventoryText(); audioEngine.speak(txt,true); }
+    else if(o.value==='save'){ game.save(); audioEngine.speak('Game saved.'); }
+    else if(o.value==='howto'){ showHowToPause(); }
+    else if(o.value==='settings'){ showSettingsPause(); }
+    else if(o.value==='main'){ document.getElementById('game-root').classList.add('hidden'); document.removeEventListener('keydown', gameKeyHandler); showMainMenu(); }
+  };
+  const keyHandler=(e)=>{
+    if(e.key==='ArrowUp' || e.key==='w'){ e.preventDefault(); sel=(sel-1+opts.length)%opts.length; render(); speak(); }
+    else if(e.key==='ArrowDown' || e.key==='s'){ e.preventDefault(); sel=(sel+1)%opts.length; render(); speak(); }
+    else if(e.key==='Enter' || e.key===' '){ e.preventDefault(); document.removeEventListener('keydown', keyHandler); activate(); }
+    else if(e.key==='Escape'){ e.preventDefault(); document.removeEventListener('keydown', keyHandler); overlay.classList.add('hidden'); }
+  };
+  document.addEventListener('keydown', keyHandler);
+  overlay.classList.remove('hidden');
+  render(); speak();
+  function showHowToPause(){
+    showHowTo();
+    // override back to pause
+    setTimeout(()=>{
+      const back=document.getElementById('howto-back');
+      if(back){ back.onclick=()=>{ document.getElementById('menu-overlay').classList.add('hidden'); showPauseMenu(); }; }
+    },100);
+  }
+  function showSettingsPause(){
+    showSettings();
+    setTimeout(()=>{
+      const box=document.getElementById('menu-box');
+      const back=box.querySelector('[data-action="back"]');
+      if(back){ back.onclick=()=>{ document.getElementById('menu-overlay').classList.add('hidden'); showPauseMenu(); }; }
+    },100);
+  }
+}
+
+// ============================================================================
+// INIT - TAP TO START
+// ============================================================================
+async function boot(){
+  const overlay=document.getElementById('overlay');
+  const start=async()=>{
+    overlay.classList.add('hidden');
+    if(!audioEngine){ audioEngine=new AudioEngine(); await audioEngine.init(); }
+    if(!game) game=new Game(audioEngine);
+    document.getElementById('game-root').classList.remove('hidden');
+    document.getElementById('game-root').classList.add('hidden'); // hide until menu choice
+    showMainMenu();
+    // auto speak welcome
+    setTimeout(()=>audioEngine.speak('Welcome to Cheetos Factory Audio Ops! Blind accessible audio game. Main menu: Start new shift, Continue shift, Test speakers, How to play, Settings. Use arrow keys or W S to navigate, Enter to select. Touch: tap menu items.', true),500);
+  };
+  overlay.addEventListener('click', start, {once:true});
+  overlay.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); start(); } });
+  overlay.focus();
+  // Try auto init on Windows as requested
+  if(navigator.platform && navigator.platform.toLowerCase().includes('win')){
+    // still need gesture but try
+    document.addEventListener('keydown', ()=>{ if(!audioEngine) start(); }, {once:true});
+  }
+}
+window.addEventListener('load', boot);
+
+// Register service worker? not needed
+// Expose for debug
+window.GAME_DATA=GAME_DATA;
+</script>
+</body>
+</html>
