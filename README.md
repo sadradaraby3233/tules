@@ -26,6 +26,7 @@ JSON commands can inspect and modify a local project through TULES:
 - Python syntax protection before writes are committed.
 - CRLF/LF preservation.
 - Literal, regular-expression, fuzzy, glob, and filtered content search.
+- Google web search plus safe page retrieval, HTML/text/link/element extraction, and downloads.
 - Structured Jupyter notebook cell editing.
 - Bash and PowerShell execution with timeouts and structured results.
 - Static review, symbol extraction, dependency checks, and batch validation.
@@ -192,6 +193,8 @@ Action names are case-insensitive.
 | `review` | Run built-in static checks |
 | `impact_check` | Find files that import or reference a module |
 | `check_duplicates` | Find duplicate symbol definitions |
+| `web_search` | Search the public web with Google |
+| `web_fetch` | Retrieve page text, HTML, JSON, links, metadata, or selected elements |
 
 ### Modify files
 
@@ -207,6 +210,7 @@ Action names are case-insensitive.
 | `delete_file` | Back up and delete a file |
 | `undo` | Restore the newest backup for one file |
 | `notebook_edit` | Insert, replace, or delete a notebook cell |
+| `download_url` | Safely download a public URL into the workspace |
 
 ### Execute and coordinate
 
@@ -246,6 +250,37 @@ supported in clipboard mode. If PowerShell is not installed, its action returns 
 failure rather than interpreting the command in another shell.
 
 Use `--no-shell` when command execution should be unavailable.
+
+## Web tools
+
+Search Google without an API key:
+
+```text
+edit:
+{"action":"web_search","query":"Python pathlib documentation","limit":5}
+endedit
+```
+
+Retrieve a readable page, its original HTML, parsed JSON, links, or structured elements:
+
+```text
+edit:
+{"action":"web_fetch","url":"https://docs.python.org/3/library/pathlib.html","mode":"text"}
+endedit
+```
+
+Text can be paged with `start_line`/`end_line`, and HTML with `start_char`/`end_char`.
+`mode: "elements"` accepts optional `tag`, `id`, and `class` filters plus `offset` and
+`limit`. `mode: "links"` resolves relative links against the final page URL. Responses
+include the final URL after redirects, HTTP status, content type, byte count, title, and
+page metadata. `mode: "html"` returns source HTML, while `mode: "json"` decodes JSON.
+
+Download a linked file using `download_url`; provide `file` when the URL does not contain
+a useful filename. Existing files are refused unless `overwrite: true`, in which case the
+old file is backed up first. Network tools allow only public HTTP(S) destinations, reject
+credentials and private/local/reserved addresses, validate redirects, enforce timeouts,
+and cap response sizes. Google markup and anti-automation behavior can change, so search
+may occasionally return fewer results; direct `web_fetch` remains available.
 
 ## Safety model
 

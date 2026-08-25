@@ -179,8 +179,11 @@ class Workspace:
 
 	def write(self, path: Path, text: str, newline: str = "\n") -> None:
 		"""Atomically write UTF-8 text, leaving the old file intact on failure."""
+		self.write_bytes(path, text.replace("\n", newline).encode("utf-8"))
+
+	def write_bytes(self, path: Path, data: bytes) -> None:
+		"""Atomically write arbitrary bytes and preserve existing permissions."""
 		path.parent.mkdir(parents=True, exist_ok=True)
-		data = text.replace("\n", newline).encode("utf-8")
 		temporary: Optional[Path] = None
 		try:
 			with tempfile.NamedTemporaryFile(

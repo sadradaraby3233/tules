@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from tules.commands import web
 from tules.registry import REGISTRY
 
 
@@ -13,8 +14,16 @@ def run_ok(agent, payload):
 	return result
 
 
-def test_every_registered_command_has_an_end_to_end_success_path(agent):
+def test_every_registered_command_has_an_end_to_end_success_path(agent, monkeypatch):
 	root = agent.root
+
+	def fake_web_request(url, timeout, max_bytes):
+		if "google.com/search" in url:
+			body = b'<a href="/url?q=https%3A%2F%2Fexample.com%2F">Example</a>'
+			return body, url, "text/html", 200
+		return b"<html><title>Example</title><body>page</body></html>", url, "text/html", 200
+
+	monkeypatch.setattr(web, "_request", fake_web_request)
 	(root / "other.py").write_text("import sample\n\ndef greet():\n\treturn sample.greet('x')\n")
 	(root / "book.ipynb").write_text(
 		json.dumps(
@@ -59,6 +68,13 @@ def test_every_registered_command_has_an_end_to_end_success_path(agent):
 		"memory": {"action": "memory", "action_type": "read"},
 		"run": {"action": "run", "command": "printf integration-ok"},
 		"bash": {"action": "bash", "command": "printf bash-ok", "description": "smoke test"},
+		"web_search": {"action": "web_search", "query": "example"},
+		"web_fetch": {"action": "web_fetch", "url": "https://example.com"},
+		"download_url": {
+			"action": "download_url",
+			"url": "https://example.com/file.html",
+			"file": "downloaded.html",
+		},
 	}
 	for payload in payloads.values():
 		run_ok(agent, payload)
