@@ -58,9 +58,13 @@ def test_every_registered_command_has_an_end_to_end_success_path(agent):
 		"list_actions": {"action": "list_actions"},
 		"memory": {"action": "memory", "action_type": "read"},
 		"run": {"action": "run", "command": "printf integration-ok"},
+		"bash": {"action": "bash", "command": "printf bash-ok", "description": "smoke test"},
 	}
 	for payload in payloads.values():
 		run_ok(agent, payload)
+	powershell_result = agent.run({"action": "powershell", "command": "Write-Output 'ok'"})
+	if not powershell_result.success:
+		assert "not installed" in powershell_result.message.lower()
 
 	# Mutations use separate files so every command gets a genuine successful write.
 	mutations = {
@@ -70,7 +74,7 @@ def test_every_registered_command_has_an_end_to_end_success_path(agent):
 			"one\n",
 			{"file_path": "edit.txt", "old_string": "one", "new_string": "two"},
 		),
-		"replace": ("replace.txt", "one one\n", {"search": "one", "replace_with": "two"}),
+		"replace": ("replace.txt", "one\n", {"search": "one", "replace_with": "two"}),
 		"search_and_replace_all": (
 			"all.txt",
 			"one one\n",
@@ -135,8 +139,7 @@ def test_every_registered_command_has_an_end_to_end_success_path(agent):
 		set(payloads)
 		| set(mutations)
 		| {
-			"smart_replace",
-			"confirm_smart_replace",
+			"powershell",
 			"create_file",
 			"write",
 			"delete_file",
@@ -144,8 +147,8 @@ def test_every_registered_command_has_an_end_to_end_success_path(agent):
 			"notebook_edit",
 		}
 	)
-	assert covered == set(REGISTRY), (
-		f"Commands without an integration success path: {set(REGISTRY) - covered}"
+	assert not set(REGISTRY) - covered, (
+		f"Commands without an integration path: {set(REGISTRY) - covered}"
 	)
 
 
@@ -159,7 +162,7 @@ def test_every_registered_command_has_an_end_to_end_success_path(agent):
 		({"action": "grep", "pattern": "x", "output_mode": "wrong"}, "output_mode"),
 		(
 			{"action": "str_replace", "file": "notes.md", "old_str": "missing", "new_str": "x"},
-			"not_found",
+			"no_confident_match",
 		),
 		(
 			{
@@ -320,8 +323,9 @@ def test_shell_disabled_timeout_and_output_clipping(workspace):
 	assert "disabled" in disabled.run({"action": "run", "command": "echo no"}).message.lower()
 	timed = Agent(str(workspace.root), shell_timeout=1)
 	assert "timed out" in timed.run({"action": "run", "command": "sleep 2"}).message.lower()
-	result = run_ok(timed, {"action": "run", "command": "python -c \"print('x'*5000)\""})
-	assert len(result.details["stdout"]) == 4000
+	result = run_ok(timed, {"action": "run", "command": "python -c \"print('x'*40000)\""})
+	assert len(result.details["stdout"]) == 30_000
+	assert result.details["truncated"] is True
 
 
 def test_empty_no_match_and_no_issue_results_are_successful(agent):

@@ -162,9 +162,8 @@ Use `diff_preview` or `validate_batch` for risky or multi-file operations.
 
 Default to a precise edit:
 
-- Prefer `Edit` or `str_replace` for an exact unique block.
-- Use `surgical_replace` only when exact formatting cannot be reproduced.
-- Use `context_replace` when surrounding lines identify the intended block.
+- Use the universal `replace` command for string and block replacements. It automatically tries exact, normalized-quote, whitespace, token, AST, and confidence-gated contextual matching.
+- Add `context_before`/`context_after` when repeated text needs disambiguation.
 - Use `replace_by_line` only after a fresh numbered read.
 - Use `Write` primarily for new files or intentional full-file rewrites.
 - Use `NotebookEdit` for `.ipynb`; do not treat notebook JSON as normal source code.
@@ -219,39 +218,26 @@ Do not put another tool command in the final response unless more work is requir
 
 Use this priority order:
 
-1. **`Edit` or `str_replace`** — preferred safe default for an exact unique string.
-2. **`surgical_replace`** — exact text is unavailable due to whitespace/wrapping drift.
-3. **`context_replace`** — approximate target plus nearby anchors identifies the location.
-4. **`smart_replace`** — ask TULES to enumerate ambiguous exact matches, then use
-   `confirm_smart_replace`.
+1. **`replace`** — the one universal string/block replacement tool. It automatically tries exact, quote-normalized, whitespace, token, AST, and confidence-gated fuzzy matching.
+2. **`replace` with context** — add `context_before` and/or `context_after` when exact text repeats.
+3. **`replace` with `match_id`** — select a candidate returned by an ambiguity result.
+4. **`replace` with `replace_all: true`** — only when every occurrence should change.
 5. **`replace_by_line`** — last resort after a fresh `view`.
 6. **`Write`** — create a file or intentionally replace its entire contents.
 
-Specialized operations:
+Historical names (`Edit`, `str_replace`, `surgical_replace`, `context_replace`, `search_and_replace_all`, `smart_replace`, and `confirm_smart_replace`) are compatibility aliases to `replace`; they are not separate matching engines.
 
-- `search_and_replace_all` or `Edit` with `replace_all: true` for a deliberate global
-  replacement within one file.
-- `insert` to add lines after a known line.
-- `delete` to remove an inclusive line range.
-- `create_file` when creation must fail if the path already exists.
-- `NotebookEdit` for notebook cell operations.
-- `delete_file` only when removal is intentional; a backup is made first.
-- `undo` when a previous edit must be restored.
+Specialized non-string operations remain separate: `insert`, `delete`, `create_file`, `NotebookEdit`, `delete_file`, and `undo`.
 
 ### Editing rules for the AI
 
-- Include enough unchanged context to make an exact target unique.
-- Preserve indentation exactly in strict replacements.
+- Include enough unchanged context to identify the intended target.
+- Let universal `replace` adapt indentation; inspect the resulting region afterward.
 - Keep replacements focused; do not replace a whole file to change one function.
-- Never set `replace_all: true` merely to bypass an ambiguity error. Use it only when
-  every occurrence should change.
-- Never use `replace`, which changes only the first occurrence, unless changing the first
-  occurrence is explicitly safe and intentional.
-- Never use stale line numbers after another edit changed lines above them.
-- For deletion by string, `Edit` removes a following newline when deleting a complete
-  line, avoiding an accidental blank line.
-- Python edits and creates are syntax-guarded. If a syntax error is prevented, inspect
-  `error` and `blast_radius`, correct the replacement, and retry.
+- Never set `replace_all: true` merely to bypass ambiguity.
+- Never invent a `match_id`; use a candidate ID from the current file state.
+- Never use stale line numbers after another edit shifted the file.
+- Python edits and creates are syntax-guarded. On failure, inspect `error` and `blast_radius`, correct the replacement, and retry.
 
 ## 7. Batching and sequencing
 
@@ -572,9 +558,9 @@ Each displayed source line is capped at 500 characters.
 
 ## 11. Exact and flexible edit commands
 
-### `str_replace`
+### `str_replace` (compatibility alias)
 
-Safely replace an exact string only when it occurs exactly once.
+Legacy field spelling for universal `replace`. It now benefits from the complete universal cascade rather than exact-only matching.
 
 **Input**
 
@@ -596,13 +582,13 @@ endedit
 **Failure behavior:** reports `NOT_FOUND` with a closest match or `NOT_UNIQUE` with an
 occurrence count. No write occurs.
 
-**Use when:** this is the recommended native TULES default.
+**Prefer:** use canonical `replace` in new prompts; this name remains for older integrations.
 
 ---
 
-### `Edit` / `edit`
+### `Edit` / `edit` (compatibility alias)
 
-Claude-compatible unique edit with smart straight/curly quote matching.
+Claude-style field spelling for universal `replace`, including all universal fallback levels.
 
 **Input**
 
@@ -630,26 +616,45 @@ rejected unless `replace_all` is true.
 
 ---
 
-### `replace`
+### `replace` — universal replacement engine
 
-Replace only the first exact occurrence.
+This is the one canonical replacement tool. It accepts both native and Claude-style field names and automatically tries the safest strategies in this order:
 
-**Input:** `file`, `search`, `replace_with` (optional empty), `reason` (optional).
+1. unique exact text,
+2. straight/curly quote-normalized text while preserving the file typography,
+3. whitespace-insensitive multiline matching with local indentation adaptation,
+4. token-equivalent line matching,
+5. Python function/class AST matching,
+6. confidence-gated fuzzy/context matching.
+
+It never silently picks among unresolved duplicate matches.
+
+**Input aliases**
+
+| Purpose | Accepted fields |
+| --- | --- |
+| Path | `file` or `file_path` |
+| Existing text | `old_string`, `old_str`, or `search` |
+| Replacement | `new_string`, `new_str`, or `replace_with` |
+| Context | `context_before`, `context_after` |
+| Fuzzy floor | `confidence_threshold` (default 0.85; short blocks require more) |
+| All matches | `replace_all` boolean, default false |
+| One candidate | `match_id` integer from a prior ambiguity result |
+| Audit label | `reason` |
 
 ```text
 edit:
-{"action":"replace","file":"notes.txt","search":"draft","replace_with":"final"}
+{"action":"replace","file":"src/app.py","old_string":"def old():\n    return 1","new_string":"def new():\n    return 2"}
 endedit
 ```
 
-**Warning:** this command intentionally does not require uniqueness. Prefer
-`str_replace` unless first-occurrence semantics are truly intended.
+**Success details:** `match_level`, `occurrences`, backup, reason, and matcher-specific confidence/line information. `match_level` may be `exact`, `normalized_quotes`, `whitespace`, `tokens`, `ast`, `context`, `fuzzy`, or `empty_file`.
 
----
+On ambiguity, details include candidate locations. Add context, pass the chosen `match_id`, or explicitly set `replace_all` only when every match should change. An empty old string creates a missing file or fills an empty file, but cannot overwrite a non-empty file.
 
-### `search_and_replace_all`
+### `search_and_replace_all` (compatibility alias)
 
-Replace every exact occurrence in one file.
+Routes to universal `replace` with replace-all behavior enabled.
 
 **Input:** `file`, `search`, `replace_with`, optional `reason`.
 
@@ -665,9 +670,9 @@ Use only after confirming every occurrence should change.
 
 ---
 
-### `surgical_replace`
+### `surgical_replace` (compatibility alias)
 
-Flexible replacement cascade:
+Routes to universal `replace`. The canonical engine includes this former flexible cascade:
 
 1. exact substring,
 2. line-by-line whitespace-insensitive match,
@@ -690,9 +695,9 @@ intended block is known. It refuses ambiguous token matches.
 
 ---
 
-### `context_replace`
+### `context_replace` (compatibility alias)
 
-Locate a block by similarity plus optional surrounding anchors.
+Routes to universal `replace` while accepting similarity and surrounding anchors.
 
 **Input**
 
@@ -722,7 +727,7 @@ replacement is reindented to the matched file block.
 
 ---
 
-### `smart_replace`
+### `smart_replace` (compatibility alias)
 
 If the exact target occurs once, edit it. If it occurs multiple times, return numbered
 candidates without changing the file.
@@ -740,7 +745,7 @@ Then issue `confirm_smart_replace`.
 
 ---
 
-### `confirm_smart_replace`
+### `confirm_smart_replace` (compatibility alias)
 
 Replace one exact candidate selected from `smart_replace` output.
 
@@ -1082,40 +1087,35 @@ Use when the live installation may differ from this manual.
 
 ## 17. Shell execution
 
-### `run`
+### `Bash` / `bash`
 
-Run a shell command with the workspace root as the current directory.
+Execute a command with `/bin/bash -lc` in the workspace root.
 
-**Input**
+**Input:** `command` required; `timeout` optional (1–600 seconds); `description` optional. `run_in_background` is recognized but rejected because clipboard mode cannot reliably manage a persistent background process.
 
-| Field | Required | Default |
-| --- | --- | --- |
-| `command` | yes | — |
-| `timeout` | no | agent default, normally 30 seconds |
+**Returns:** `stdout`, `stderr`, `exit_code`, `shell`, `description`, and `truncated`. Output capture keeps the last 30,000 characters per stream. Nonzero exit codes return `STATUS: FAILED` with full structured details.
 
 ```text
 edit:
-{"action":"run","command":"pytest -q tests/test_service.py","timeout":120}
+{"action":"bash","command":"pytest -q","timeout":180,"description":"Run test suite"}
 endedit
 ```
 
-**Result:** status is success only for exit code 0. Details contain the last 4,000
-characters of `stdout` and `stderr`.
+### `PowerShell` / `powershell`
 
-The command uses the system shell and can perform arbitrary operations. It may be
-disabled by launching TULES with `--no-shell`.
+Execute PowerShell using `pwsh` (preferred) or Windows PowerShell when installed. It runs with `-NoLogo -NoProfile -NonInteractive -Command` in the workspace root and accepts the same fields/returns as `bash`.
 
-### Safe shell guidance for the AI
+```text
+edit:
+{"action":"powershell","command":"Get-ChildItem -Recurse -Filter *.ps1","timeout":60}
+endedit
+```
 
-- Prefer project-native test/lint/build commands discovered from configuration.
-- Run focused tests first, then a broader suite when practical.
-- Do not use shell commands to bypass workspace path safety.
-- Do not run destructive commands (`rm -rf`, disk formatting, credential operations,
-  force pushes, destructive database commands) unless the user explicitly requests and
-  understands them.
-- Do not start interactive programs or long-running watchers; TULES captures output and
-  enforces a timeout.
-- Quote paths and arguments correctly.
+If PowerShell is unavailable, the tool fails clearly and recommends installing PowerShell 7 (`pwsh`). It never pretends Bash syntax is PowerShell.
+
+### `run`
+
+Backward-compatible shell action. It now routes through the deterministic Bash implementation and has the same timeout, output, metadata, and safety behavior as `bash`.
 
 ---
 
@@ -1409,8 +1409,14 @@ tests/              automated test suite
 
 ```text
 DISCOVER: analyze -> Glob/Grep -> view/Read -> extract_symbols/impact_check
-EDIT:     str_replace/Edit -> surgical_replace -> context_replace -> line edit
+EDIT:     replace (universal cascade + context/match_id/replace_all) -> line edit
 VERIFY:   view/Read -> review -> run tests/lint/build -> Grep for stale references
+RECOVER:  read exact text; never guess, force replace-all, or ignore failures
+FORMAT:   edit:\n{"action":"...", ...}\nendedit
+```
+
+When in doubt: inspect more narrowly, edit more precisely, and verify more directly.
+un tests/lint/build -> Grep for stale references
 RECOVER:  read exact text; never guess, force replace-all, or ignore failures
 FORMAT:   edit:\n{"action":"...", ...}\nendedit
 ```

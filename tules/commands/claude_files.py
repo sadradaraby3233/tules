@@ -1,4 +1,4 @@
-"""Claude Code compatible Read/Write/Edit/Glob/Grep and NotebookEdit tools.
+"""Claude Code compatible Read/Write/Glob/Grep and NotebookEdit tools.
 
 These actions accept Claude Code's public parameter names while retaining TULES'
 workspace confinement, backups, newline preservation, and Python syntax guard.
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 from ..editor import check_syntax
-from ..errors import MatchError, SyntaxGuardError, TulesError, WorkspaceError
+from ..errors import SyntaxGuardError, TulesError, WorkspaceError
 from ..models import Result
 from ..registry import command, flag, number, text
 from ..workspace import SKIPPED_DIRS
@@ -111,60 +111,6 @@ def write(agent, payload: Dict[str, Any]) -> Result:
 		type="create",
 		content=content,
 		original_file=None,
-	)
-
-
-def _normalize_quotes(value: str) -> str:
-	quotes = {"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'}
-	return value.translate(str.maketrans(quotes))
-
-
-def _actual_match(content: str, needle: str) -> str:
-	if needle in content:
-		return needle
-	normal_content, normal_needle = _normalize_quotes(content), _normalize_quotes(needle)
-	start = normal_content.find(normal_needle)
-	if start >= 0:
-		return content[start : start + len(needle)]
-	raise MatchError("String to replace not found in file", old_string=needle)
-
-
-@command("edit", "Claude-compatible unique string replacement", mutates=True)
-def edit(agent, payload: Dict[str, Any]) -> Result:
-	relpath = _path(payload, "file_path", "file")
-	old = text(payload, "old_string", payload.get("old_str"))
-	new = text(payload, "new_string", payload.get("new_str", ""))
-	replace_all = flag(payload, "replace_all")
-	if old == new:
-		raise TulesError("No changes to make: old_string and new_string are exactly the same")
-	path = agent.workspace.resolve(relpath)
-	if not path.exists() and old == "":
-		return agent.editor.create(relpath, new)
-	document = agent.workspace.load(relpath)
-	if old == "":
-		if document.text.strip():
-			raise TulesError("Cannot create new file - file already exists")
-		return agent.editor._apply(document, new, "Claude Edit", occurrences=1)
-	actual = _actual_match(document.text, old)
-	count = document.text.count(actual)
-	if count > 1 and not replace_all:
-		raise MatchError(
-			f"Found {count} matches of the string to replace, but replace_all is false. "
-			"Set replace_all to true or provide more context.",
-			occurrences=count,
-		)
-	# Claude removes the following newline when deleting a whole line.
-	actual_for_edit = actual
-	if not new and not actual.endswith("\n") and actual + "\n" in document.text:
-		actual_for_edit += "\n"
-	updated = document.text.replace(actual_for_edit, new, -1 if replace_all else 1)
-	return agent.editor._apply(
-		document,
-		updated,
-		"Claude Edit",
-		occurrences=count,
-		match_level="exact" if actual == old else "normalized_quotes",
-		replace_all=replace_all,
 	)
 
 
