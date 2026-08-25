@@ -1,5 +1,6 @@
 """Reading, listing, creating and restoring files."""
 
+import re
 from typing import Any, Dict
 
 from ..errors import TulesError
@@ -7,7 +8,18 @@ from ..models import Result
 from ..registry import command, number, text
 
 MEMORY_FILES = {"scratchpad": "scratchpad.md", "todo": "todo.md"}
+MEMORY_SLUG = re.compile(r"[^A-Za-z0-9_-]+")
 PREVIEW_LINES = 400
+
+
+def _memory_filename(target: str) -> str:
+	"""Map a memory target to a filename, allowing custom names beyond the defaults."""
+	if target in MEMORY_FILES:
+		return MEMORY_FILES[target]
+	slug = MEMORY_SLUG.sub("_", target).strip("_")
+	if not slug:
+		raise TulesError(f"Invalid memory target: {target!r}")
+	return f"{slug}.md"
 
 
 @command("read_file", "Read a file, optionally a line range")
@@ -61,13 +73,14 @@ def undo(agent, payload: Dict[str, Any]) -> Result:
 	return agent.editor.restore(text(payload, "file"))
 
 
-@command("memory", "Append to or read the agent scratchpad")
+@command("memory", "Append to, read, or list agent memory files")
 def memory(agent, payload: Dict[str, Any]) -> Result:
-	target = text(payload, "target", "scratchpad")
-	if target not in MEMORY_FILES:
-		raise TulesError(f"Unknown memory target: {target}", available=sorted(MEMORY_FILES))
-	path = agent.workspace.state_file(MEMORY_FILES[target])
 	mode = text(payload, "action_type", "read")
+	if mode == "list":
+		agent.workspace.state_root.mkdir(exist_ok=True)
+		names = sorted(item.name for item in agent.workspace.state_root.glob("*.md"))
+		return Result.ok(f"{len(names)} memory file(s)", files=names)
+	path = agent.workspace.state_file(_memory_filename(text(payload, "target", "scratchpad")))
 	if mode == "read":
 		body = path.read_text(encoding="utf-8") if path.exists() else ""
 		return Result.ok(f"Read {path.name}", content=body)
@@ -75,4 +88,4 @@ def memory(agent, payload: Dict[str, Any]) -> Result:
 		with path.open("a", encoding="utf-8") as handle:
 			handle.write(text(payload, "content") + "\n")
 		return Result.ok(f"Appended to {path.name}")
-	raise TulesError("'action_type' must be 'read' or 'write'")
+	raise TulesError("'action_type' must be 'read', 'write' or 'list'")

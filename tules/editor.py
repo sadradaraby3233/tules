@@ -1,6 +1,7 @@
 """Every mutation of a workspace file goes through this class."""
 
 import ast
+import json
 import re
 from difflib import unified_diff
 from typing import Any, Dict, List, Optional, Sequence
@@ -23,6 +24,24 @@ def check_syntax(text: str, filename: str = "<edit>") -> Optional[str]:
 		return f"SyntaxError at line {exc.lineno}, offset {exc.offset}: {exc.msg}"
 	except ValueError as exc:
 		return f"Invalid source: {exc}"
+	return None
+
+
+def check_json(text: str) -> Optional[str]:
+	"""Return a description of the JSON error, or None when the text parses."""
+	try:
+		json.loads(text)
+	except json.JSONDecodeError as exc:
+		return f"JSONDecodeError at line {exc.lineno}, column {exc.colno}: {exc.msg}"
+	return None
+
+
+def guard_source(text: str, filename: str, suffix: str) -> Optional[str]:
+	"""Refuse an edit that would make a file we understand unparseable."""
+	if suffix == ".py":
+		return check_syntax(text, filename)
+	if suffix == ".json":
+		return check_json(text)
 	return None
 
 
@@ -214,10 +233,9 @@ class Editor:
 		path = self.workspace.resolve(relpath)
 		if path.exists():
 			raise WorkspaceError(f"File already exists: {relpath}")
-		if path.suffix == ".py":
-			problem = check_syntax(content, relpath)
-			if problem:
-				raise SyntaxGuardError("SYNTAX_ERROR_PREVENTED", error=problem)
+		problem = guard_source(content, relpath, path.suffix.lower())
+		if problem:
+			raise SyntaxGuardError("SYNTAX_ERROR_PREVENTED", error=problem)
 		self.workspace.write(path, content)
 		return Result.ok(f"Created {relpath}", lines=content.count("\n") + 1)
 
@@ -240,14 +258,13 @@ class Editor:
 	def _apply(self, document: Document, text: str, reason: str, **details: Any) -> Result:
 		if text == document.text:
 			raise TulesError("NO_CHANGE: the replacement is identical to the original")
-		if document.path.suffix == ".py":
-			problem = check_syntax(text, document.relpath)
-			if problem:
-				raise SyntaxGuardError(
-					"SYNTAX_ERROR_PREVENTED",
-					error=problem,
-					blast_radius=quote_error_region(text, problem),
-				)
+		problem = guard_source(text, document.relpath, document.path.suffix.lower())
+		if problem:
+			raise SyntaxGuardError(
+				"SYNTAX_ERROR_PREVENTED",
+				error=problem,
+				blast_radius=quote_error_region(text, problem),
+			)
 		backup = self.workspace.save(document, text)
 		return Result.ok(
 			f"Edited {document.relpath}",

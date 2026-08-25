@@ -1,6 +1,7 @@
 import pytest
 
 from tules.errors import WorkspaceError
+from tules.workspace import Workspace
 
 
 def test_resolve_rejects_paths_outside_the_root(workspace):
@@ -51,3 +52,35 @@ def test_walk_skips_the_backup_directory(workspace):
 	workspace.back_up(workspace.root / "sample.py")
 	names = {path.name for path in workspace.walk()}
 	assert names == {"sample.py", "notes.md"}
+
+
+def test_backups_are_pruned_to_the_retention_limit(tmp_path):
+	space = Workspace(str(tmp_path), max_backups=3)
+	target = tmp_path / "sample.py"
+	for value in range(6):
+		target.write_text(f"x = {value}\n", encoding="utf-8")
+		backup = space.back_up(target)
+		# Force distinct timestamps so each copy lands under its own name.
+		backup.rename(backup.with_name(f"sample_2026010{value}_000000.py"))
+	assert len(space.backups_of(target)) == 3
+
+
+def test_pruning_keeps_the_newest_backups(tmp_path):
+	space = Workspace(str(tmp_path), max_backups=2)
+	target = tmp_path / "sample.py"
+	for value in range(4):
+		target.write_text(f"x = {value}\n", encoding="utf-8")
+		backup = space.back_up(target)
+		backup.rename(backup.with_name(f"sample_2026010{value}_000000.py"))
+	kept = sorted(item.name for item in space.backups_of(target))
+	assert kept == ["sample_20260102_000000.py", "sample_20260103_000000.py"]
+
+
+def test_max_backups_zero_disables_pruning(tmp_path):
+	space = Workspace(str(tmp_path), max_backups=0)
+	target = tmp_path / "sample.py"
+	for value in range(4):
+		target.write_text(f"x = {value}\n", encoding="utf-8")
+		backup = space.back_up(target)
+		backup.rename(backup.with_name(f"sample_2026010{value}_000000.py"))
+	assert len(space.backups_of(target)) == 4

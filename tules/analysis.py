@@ -2,7 +2,7 @@
 
 import ast
 import re
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Pattern, Sequence, Tuple
 
 from .errors import TulesError
 from .workspace import Document, Workspace
@@ -16,7 +16,95 @@ COMMENT_PREFIXES = {
 }
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 LONG_LINE = 200
-JS_SYMBOL = re.compile(r"(?:class|function|const|let|var)\s+([A-Za-z_$][\w$]*)")
+
+# Kinds that name a definition, as opposed to a plain variable or an import.
+# Used by duplicate detection so it only compares things worth comparing.
+DEFINITION_KINDS = {
+	"class", "function", "method", "struct", "enum", "trait", "interface",
+	"type", "module", "object", "protocol",
+}
+
+
+def _compile(specs: Sequence[Tuple[str, str]]) -> List[Tuple[str, Pattern[str]]]:
+	"""Compile a (kind, regex) table; each regex captures the symbol name in group 1."""
+	return [(kind, re.compile(pattern)) for kind, pattern in specs]
+
+
+# Regex based symbol extraction for the languages we cannot parse with `ast`.
+# Patterns are tried in order, and the first to claim a (name, line) wins, so
+# the more specific declarations come before the catch-all variable ones.
+_JS_LIKE = _compile([
+	("class", r"\bclass\s+([A-Za-z_$][\w$]*)"),
+	("function", r"\bfunction\s*\*?\s+([A-Za-z_$][\w$]*)"),
+	("function", r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*"
+		r"(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"),
+	("variable", r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)"),
+])
+_GO = _compile([
+	("function", r"\bfunc\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)"),
+	("type", r"\btype\s+([A-Za-z_]\w*)"),
+])
+_RUST = _compile([
+	("function", r"\bfn\s+([A-Za-z_]\w*)"),
+	("struct", r"\bstruct\s+([A-Za-z_]\w*)"),
+	("enum", r"\benum\s+([A-Za-z_]\w*)"),
+	("trait", r"\btrait\s+([A-Za-z_]\w*)"),
+])
+_JVM = _compile([
+	("class", r"\bclass\s+([A-Za-z_]\w*)"),
+	("interface", r"\binterface\s+([A-Za-z_]\w*)"),
+	("enum", r"\benum\s+([A-Za-z_]\w*)"),
+	("object", r"\bobject\s+([A-Za-z_]\w*)"),
+	("function", r"\bfun\s+([A-Za-z_]\w*)"),
+])
+_C_LIKE = _compile([
+	("class", r"\bclass\s+([A-Za-z_]\w*)"),
+	("struct", r"\bstruct\s+([A-Za-z_]\w*)"),
+	("enum", r"\benum\s+([A-Za-z_]\w*)"),
+])
+_RUBY = _compile([
+	("class", r"\bclass\s+([A-Za-z_]\w*)"),
+	("module", r"\bmodule\s+([A-Za-z_]\w*)"),
+	("method", r"\bdef\s+([A-Za-z_][\w!?]*)"),
+])
+_PHP = _compile([
+	("class", r"\bclass\s+([A-Za-z_]\w*)"),
+	("interface", r"\binterface\s+([A-Za-z_]\w*)"),
+	("trait", r"\btrait\s+([A-Za-z_]\w*)"),
+	("function", r"\bfunction\s+([A-Za-z_]\w*)"),
+])
+_SWIFT = _compile([
+	("class", r"\bclass\s+([A-Za-z_]\w*)"),
+	("struct", r"\bstruct\s+([A-Za-z_]\w*)"),
+	("enum", r"\benum\s+([A-Za-z_]\w*)"),
+	("protocol", r"\bprotocol\s+([A-Za-z_]\w*)"),
+	("function", r"\bfunc\s+([A-Za-z_]\w*)"),
+])
+_LUA = _compile([
+	("function", r"\bfunction\s+([A-Za-z_][\w.:]*)"),
+])
+_SHELL = _compile([
+	("function", r"(?:^|\s)function\s+([A-Za-z_]\w*)"),
+	("function", r"(?m)^\s*([A-Za-z_]\w*)\s*\(\)\s*\{"),
+])
+
+# One suffix -> pattern table. Families share a single compiled list.
+SYMBOL_PATTERNS: Dict[str, List[Tuple[str, Pattern[str]]]] = {}
+for _suffixes, _patterns in (
+	((".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"), _JS_LIKE),
+	((".go",), _GO),
+	((".rs",), _RUST),
+	((".java", ".cs", ".kt", ".swift"), _JVM),
+	((".c", ".h", ".cpp", ".hpp"), _C_LIKE),
+	((".rb",), _RUBY),
+	((".php",), _PHP),
+	((".lua",), _LUA),
+	((".sh", ".bash"), _SHELL),
+):
+	for _suffix in _suffixes:
+		SYMBOL_PATTERNS[_suffix] = _patterns
+# Swift keeps its richer table even though it also matches the JVM shape above.
+SYMBOL_PATTERNS[".swift"] = _SWIFT
 
 
 def parse_python(document: Document) -> ast.Module:
@@ -53,8 +141,9 @@ class CodeAnalyzer:
 		suffix = document.path.suffix.lower()
 		if suffix == ".py":
 			return self._python_symbols(document)
-		if suffix in (".js", ".ts", ".jsx", ".tsx"):
-			return self._pattern_symbols(document)
+		patterns = SYMBOL_PATTERNS.get(suffix)
+		if patterns:
+			return self._pattern_symbols(document, patterns)
 		return []
 
 	def _python_symbols(self, document: Document) -> List[Dict[str, Any]]:
@@ -72,15 +161,21 @@ class CodeAnalyzer:
 				symbols.append({"kind": "import", "name": _import_label(node), "line": node.lineno})
 		return sorted(symbols, key=lambda item: item["line"])
 
-	def _pattern_symbols(self, document: Document) -> List[Dict[str, Any]]:
-		return [
-			{
-				"kind": "symbol",
-				"name": match.group(1),
-				"line": document.text.count("\n", 0, match.start()) + 1,
-			}
-			for match in JS_SYMBOL.finditer(document.text)
-		]
+	def _pattern_symbols(
+		self, document: Document, patterns: Sequence[Tuple[str, Pattern[str]]]
+	) -> List[Dict[str, Any]]:
+		claimed: Dict[Tuple[str, int], Dict[str, Any]] = {}
+		for kind, expression in patterns:
+			for match in expression.finditer(document.text):
+				name = match.group(1)
+				line = document.text.count("\n", 0, match.start()) + 1
+				key = (name, line)
+				if key not in claimed:
+					claimed[key] = {
+						"kind": kind, "name": name, "line": line, "start": match.start(),
+					}
+		ordered = sorted(claimed.values(), key=lambda item: item["start"])
+		return [{"kind": s["kind"], "name": s["name"], "line": s["line"]} for s in ordered]
 
 
 class Reviewer:
@@ -117,14 +212,14 @@ class Reviewer:
 		module = self.workspace.relativize(target).removesuffix(".py").replace("/", ".")
 		stem = target.stem
 		dependents = []
-		for path in self.workspace.walk(".py"):
+		for path in self.workspace.walk():
 			if path == target:
 				continue
 			try:
 				text = self.workspace.load_path(path, strict=False).text
 			except TulesError:
 				continue
-			kind = self._reference_kind(text, module, stem)
+			kind = self._reference_kind(text, module, stem, path.suffix.lower())
 			if kind:
 				dependents.append({"file": self.workspace.relativize(path), "kind": kind})
 		return dependents
@@ -142,13 +237,27 @@ class Reviewer:
 				continue
 		return {"total_files": files, "total_lines": lines, "files_by_type": counts}
 
-	def _reference_kind(self, text: str, module: str, stem: str) -> Optional[str]:
-		if re.search(rf"^\s*(from|import)\s+{re.escape(module)}\b", text, re.MULTILINE):
-			return "module_import"
-		if re.search(rf"^\s*(from|import)\s+[.\w]*\b{re.escape(stem)}\b", text, re.MULTILINE):
-			return "name_import"
-		if re.search(rf"\b{re.escape(stem)}\.", text):
-			return "attribute_reference"
+	def _reference_kind(self, text: str, module: str, stem: str, suffix: str) -> Optional[str]:
+		quoted = re.escape(stem)
+		if suffix == ".py":
+			if re.search(rf"^\s*(from|import)\s+{re.escape(module)}\b", text, re.MULTILINE):
+				return "module_import"
+			if re.search(rf"^\s*(from|import)\s+[.\w]*\b{quoted}\b", text, re.MULTILINE):
+				return "name_import"
+			if re.search(rf"\b{quoted}\.", text):
+				return "attribute_reference"
+			return None
+		if suffix in (".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"):
+			if re.search(rf"""(?:require|import)\s*\(?\s*['"][^'"]*\b{quoted}\b""", text):
+				return "module_import"
+			if re.search(rf"""from\s+['"][^'"]*\b{quoted}\b['"]""", text):
+				return "module_import"
+		if suffix in (".c", ".h", ".cpp", ".hpp") and re.search(
+				rf'#\s*include\s+[<"][^>"]*\b{quoted}\b', text):
+			return "include"
+		if re.search(rf"^\s*(?:import|use|require|include|from)\b[^\n]*\b{quoted}\b",
+				text, re.MULTILINE):
+			return "reference"
 		return None
 
 	def _unused_imports(self, document: Document, tree: ast.Module) -> List[Dict[str, Any]]:
@@ -208,45 +317,58 @@ class Reviewer:
 		return issues
 
 	def _duplicates_within(self, document: Document) -> List[Dict[str, Any]]:
-		tree = parse_python(document)
 		seen: Dict[str, int] = {}
 		duplicates = []
-		for node in ast.walk(tree):
-			if not isinstance(node, DEFINITIONS):
-				continue
-			if node.name in seen:
+		for name, line in self._definitions(document):
+			if name in seen:
 				duplicates.append({
-					"name": node.name,
+					"name": name,
 					"file": document.relpath,
-					"first_line": seen[node.name],
-					"duplicate_line": node.lineno,
+					"first_line": seen[name],
+					"duplicate_line": line,
 				})
 			else:
-				seen[node.name] = node.lineno
+				seen[name] = line
 		return duplicates
 
 	def _duplicates_across(self) -> List[Dict[str, Any]]:
 		seen: Dict[str, Dict[str, Any]] = {}
 		duplicates = []
-		for path in self.workspace.walk(".py"):
+		for path in self.workspace.walk():
+			if path.suffix.lower() != ".py" and path.suffix.lower() not in SYMBOL_PATTERNS:
+				continue
 			try:
 				document = self.workspace.load_path(path, strict=False)
-				tree = ast.parse(document.text)
-			except (TulesError, SyntaxError):
+			except TulesError:
 				continue
-			for node in tree.body:
-				if not isinstance(node, DEFINITIONS):
-					continue
-				previous = seen.get(node.name)
+			for name, line in self._definitions(document, top_level_only=True):
+				previous = seen.get(name)
 				if previous and previous["file"] != document.relpath:
 					duplicates.append({
-						"name": node.name,
+						"name": name,
 						"first": f"{previous['file']}:{previous['line']}",
-						"duplicate": f"{document.relpath}:{node.lineno}",
+						"duplicate": f"{document.relpath}:{line}",
 					})
 				elif not previous:
-					seen[node.name] = {"file": document.relpath, "line": node.lineno}
+					seen[name] = {"file": document.relpath, "line": line}
 		return duplicates
+
+	def _definitions(
+		self, document: Document, top_level_only: bool = False
+	) -> List[Tuple[str, int]]:
+		"""Named definitions in a file: (name, line). Python via `ast`, others via regex."""
+		if document.path.suffix.lower() == ".py":
+			try:
+				tree = ast.parse(document.text)
+			except SyntaxError:
+				return []
+			nodes = tree.body if top_level_only else list(ast.walk(tree))
+			return [(node.name, node.lineno) for node in nodes if isinstance(node, DEFINITIONS)]
+		return [
+			(symbol["name"], symbol["line"])
+			for symbol in CodeAnalyzer().extract_symbols(document)
+			if symbol["kind"] in DEFINITION_KINDS
+		]
 
 
 def _import_label(node: ast.AST) -> str:

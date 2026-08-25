@@ -12,6 +12,14 @@ from .protocol import decode, find_block
 
 POLL_SECONDS = 0.5
 BANNER = "=" * 60
+# Prefixes of the plain-text replies TULES writes back, so the monitor can tell
+# its own output apart from a command block a model produced.
+REPLY_MARKERS = ("STATUS: SUCCESS", "STATUS: FAILED", "BATCH EXECUTION COMPLETE")
+
+
+def is_reply(text: str) -> bool:
+	"""True when the clipboard holds a reply TULES itself produced."""
+	return text.lstrip().startswith(REPLY_MARKERS)
 
 
 class ClipboardMonitor:
@@ -47,11 +55,18 @@ class ClipboardMonitor:
 		self.running = False
 
 	def poll(self) -> Optional[str]:
-		"""Handle one clipboard change; returns the reply that was written back."""
+		"""Handle one clipboard change; returns the reply that was written back.
+
+		Dedup is by observed content, so the same block copied again re-runs: after
+		a run the clipboard holds our reply, and a fresh copy of the block differs
+		from it. Our own replies are recognized outright and never re-processed.
+		"""
 		current = self.clipboard.read()
 		if current == self.seen:
 			return None
 		self.seen = current
+		if is_reply(current):
+			return None
 		payload = find_block(current)
 		if payload is None:
 			if self.verbose and current.strip():

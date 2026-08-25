@@ -1,5 +1,6 @@
 """Filesystem access confined to a single project root."""
 
+import contextlib
 import re
 import shutil
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ SKIPPED_DIRS: Set[str] = {
 
 MAX_TEXT_BYTES = 4 * 1024 * 1024
 BACKUP_STAMP = "%Y%m%d_%H%M%S"
+MAX_BACKUPS_PER_FILE = 10
 
 
 @dataclass
@@ -46,12 +48,13 @@ class Document:
 class Workspace:
 	"""Resolves, reads, writes and backs up files below a fixed root."""
 
-	def __init__(self, root: str = "."):
+	def __init__(self, root: str = ".", max_backups: int = MAX_BACKUPS_PER_FILE):
 		self.root = Path(root).expanduser().resolve()
 		if not self.root.is_dir():
 			raise WorkspaceError(f"Not a directory: {self.root}")
 		self.backup_root = self.root / BACKUP_DIR
 		self.state_root = self.root / STATE_DIR
+		self.max_backups = max_backups
 
 	def resolve(self, relpath: str) -> Path:
 		if not relpath:
@@ -138,7 +141,16 @@ class Workspace:
 		target.mkdir(parents=True, exist_ok=True)
 		backup = target / f"{path.stem}_{stamp}{path.suffix}"
 		shutil.copy2(path, backup)
+		self._prune_backups(path)
 		return backup
+
+	def _prune_backups(self, path: Path) -> None:
+		"""Keep only the newest ``max_backups`` copies of a file; delete the rest."""
+		if self.max_backups <= 0:
+			return
+		for stale in self.backups_of(path)[self.max_backups:]:
+			with contextlib.suppress(OSError):
+				stale.unlink()
 
 	def backups_of(self, path: Path) -> list:
 		folder = self.backup_root / path.parent.relative_to(self.root)

@@ -60,13 +60,13 @@ DETAILS:
 | `search_regex` | | Find a regular expression |
 | `search_fuzzy` | | Find similar lines (`threshold`) |
 | `analyze` | | Summarize one file, or the project when `file` is omitted |
-| `extract_symbols` | | List functions, classes and imports |
+| `extract_symbols` | | List functions, classes and imports (Python via AST; JS/TS, Go, Rust, JVM, C/C++, Ruby, PHP, Swift, Lua, shell via patterns) |
 | `review` | | Static checks: syntax, unused imports, redefinitions, layout |
 | `check_duplicates` | | Symbols defined more than once |
 | `impact_check` | | Files importing or referencing a module |
 | `diff_preview` | | Show the diff an edit would produce |
 | `validate_batch` | | Dry-run a list of commands before sending them |
-| `memory` | | Append to or read `.tules/scratchpad.md` |
+| `memory` | | Append to, read or `list` files under `.tules/` (default `scratchpad`, `todo`, or any custom `target`) |
 | `run` | | Run a shell command in the workspace root |
 | `list_actions` (`help`) | | List every action |
 | `str_replace` | yes | Replace a string that occurs exactly once |
@@ -96,9 +96,10 @@ DETAILS:
 * Every path is resolved inside the workspace root; `..` and absolute paths elsewhere
   are refused.
 * Every write is preceded by a timestamped copy in `.tules_backups/`, mirroring the
-  project layout. `undo` restores the newest one.
-* An edit that would leave a `.py` file unparseable is refused, and the reply carries
-  the syntax error plus the lines around it.
+  project layout. `undo` restores the newest one. Only the newest ten copies of each
+  file are kept; older ones are pruned automatically.
+* An edit that would leave a `.py` file unparseable, or a `.json` file invalid, is
+  refused, and the reply carries the error plus the lines around it.
 * Line endings are preserved: a CRLF file stays CRLF.
 * After a successful edit the file is reviewed and any new issue is attached to the
   reply as a warning.
