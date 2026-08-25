@@ -48,7 +48,7 @@ def carve_json(text: str) -> Optional[str]:
 			elif char == closing:
 				depth -= 1
 				if depth == 0:
-					return text[start:index + 1]
+					return text[start : index + 1]
 	return None
 
 

@@ -1075,6 +1075,77 @@ Writes append one line; they do not replace existing memory.
 
 ---
 
+### `web_search`
+
+Search the public web through Google's HTML search interface without requiring an API key.
+
+**Input:** `query` (or `search`) required; `limit` optional, 1–20 (default 10); `offset`
+optional; `language` optional (for example `en` or `de`); `timeout` optional, 1–60 seconds.
+
+```text
+edit:
+{"action":"web_search","query":"Python AST documentation","limit":5,"language":"en"}
+endedit
+```
+
+**Success details:** `query`, `results` (`title` and absolute `url`), `search_url`, and
+HTTP `status`. Google may throttle automated requests or change its HTML; an empty or
+short result set is not proof that no pages exist. Fetch known URLs directly when possible.
+
+---
+
+### `web_fetch`
+
+Retrieve a public HTTP(S) resource and inspect it in a model-friendly representation.
+
+**Input:** `url` required; `mode` is one of `text` (default), `html`, `links`, `elements`,
+or `json`; `timeout` optional, 1–60 seconds; `max_bytes` optional, up to 16 MiB.
+
+Text mode accepts an inclusive, one-based `start_line`/`end_line` range and defaults to
+the first 500 lines. HTML mode accepts a zero-based `start_char`/`end_char` slice and
+defaults to the first 200,000 characters. For `links` and `elements`, `offset` and `limit`
+paginate results. Element mode also accepts exact `tag`, `id`, and whitespace-delimited
+`class` filters. Filters can be combined. A zero limit returns everything after the offset.
+
+```text
+edit:
+{"action":"web_fetch","url":"https://example.com/docs","mode":"elements","tag":"h2","limit":20}
+endedit
+```
+
+**Success details:** final `url` after redirects, `status`, `content_type`, `bytes`, page
+`title`, metadata, selected `content`, and `truncated`. Text mode removes scripts/styles
+and normalizes visible text. HTML mode returns source markup. Links are resolved to
+absolute URLs. JSON mode parses the response and fails clearly when it is not valid JSON.
+Use pagination or element filters to read only the required parts of large pages.
+
+---
+
+### `download_url`
+
+Download a public HTTP(S) resource directly into the workspace.
+
+**Input:** `url` required; `file`/`file_path` optional when the URL path has a filename;
+`overwrite` defaults to false; `timeout` optional, 1–60 seconds; `max_bytes` optional, up
+to 500 MiB.
+
+```text
+edit:
+{"action":"download_url","url":"https://example.com/releases/tool.zip","file":"vendor/tool.zip"}
+endedit
+```
+
+Existing targets are refused unless `overwrite: true`; overwritten files are backed up.
+Writes are workspace-confined and atomic. Details include the destination, final URL,
+HTTP status, content type, byte count, and optional backup.
+
+All web actions reject URL credentials and private, loopback, link-local, multicast, and
+reserved destinations. Redirect targets receive the same checks. Responses have strict
+size and timeout limits. These protections reduce SSRF and accidental huge downloads;
+they do not make untrusted downloaded content safe to execute.
+
+---
+
 ### `list_actions` / `help`
 
 List registered actions and summaries.
@@ -1151,9 +1222,13 @@ relative directory structure. Backup names include a timestamp:
 ```
 
 Creating a brand-new file has no prior content to back up. Deletion does create a
-backup. `undo` restores the newest backup matching the same file.
+backup. Multiple edits within one second receive unique backup names, and `undo`
+restores the newest backup matching the same file.
 
-Backups are a safety net, not a substitute for careful edits or version control.
+Writes are committed with an atomic same-directory replacement and preserve permissions
+on existing targets. A failed or interrupted write therefore leaves the previous target
+intact rather than exposing partial content. Backups are a safety net, not a substitute
+for careful edits or version control.
 
 ## 20. Python syntax guard
 

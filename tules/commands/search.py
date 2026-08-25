@@ -35,7 +35,8 @@ def search_regex(agent, payload: Dict[str, Any]) -> Result:
 @command("search_fuzzy", "Find lines similar to a string across the workspace")
 def search_fuzzy(agent, payload: Dict[str, Any]) -> Result:
 	results = agent.searcher.find_similar(
-		text(payload, "search"), threshold=decimal(payload, "threshold", 0.8))
+		text(payload, "search"), threshold=decimal(payload, "threshold", 0.8)
+	)
 	return _report(results, "fuzzy")
 
 

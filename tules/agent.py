@@ -18,8 +18,13 @@ SHELL_TIMEOUT = 30
 class Agent:
 	"""Turns a decoded JSON command into a result, and reviews what it changed."""
 
-	def __init__(self, root: str = ".", allow_shell: bool = True,
-			shell_timeout: int = SHELL_TIMEOUT, auto_review: bool = True):
+	def __init__(
+		self,
+		root: str = ".",
+		allow_shell: bool = True,
+		shell_timeout: int = SHELL_TIMEOUT,
+		auto_review: bool = True,
+	):
 		self.workspace = Workspace(root)
 		self.editor = Editor(self.workspace)
 		self.searcher = Searcher(self.workspace)

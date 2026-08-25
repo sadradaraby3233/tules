@@ -21,8 +21,13 @@ class Searcher:
 	def __init__(self, workspace: Workspace):
 		self.workspace = workspace
 
-	def find_text(self, pattern: str, case_sensitive: bool = False, whole_word: bool = False,
-			limit: int = DEFAULT_LIMIT) -> List[SearchResult]:
+	def find_text(
+		self,
+		pattern: str,
+		case_sensitive: bool = False,
+		whole_word: bool = False,
+		limit: int = DEFAULT_LIMIT,
+	) -> List[SearchResult]:
 		if not pattern:
 			raise TulesError("Missing 'search' pattern")
 		if whole_word:
@@ -41,8 +46,9 @@ class Searcher:
 			raise TulesError(f"Invalid regex: {exc}") from exc
 		return self._scan(lambda line: expression.search(line) is not None, "regex", limit)
 
-	def find_similar(self, pattern: str, threshold: float = 0.8,
-			limit: int = DEFAULT_LIMIT) -> List[SearchResult]:
+	def find_similar(
+		self, pattern: str, threshold: float = 0.8, limit: int = DEFAULT_LIMIT
+	) -> List[SearchResult]:
 		if not pattern:
 			raise TulesError("Missing 'search' pattern")
 		matcher = SequenceMatcher(None, pattern, "")
@@ -85,7 +91,7 @@ class Searcher:
 			file=self.workspace.relativize(path),
 			line=number,
 			text=lines[number - 1].rstrip(),
-			context_before="\n".join(lines[start:number - 1]),
+			context_before="\n".join(lines[start : number - 1]),
 			context_after="\n".join(lines[number:stop]),
 			kind=kind,
 		)

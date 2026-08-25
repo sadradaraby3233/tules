@@ -8,11 +8,30 @@ from .errors import TulesError
 from .workspace import Document, Workspace
 
 COMMENT_PREFIXES = {
-	".py": ("#",), ".rb": ("#",), ".sh": ("#",), ".bash": ("#",), ".yaml": ("#",),
-	".yml": ("#",), ".toml": ("#",), ".js": ("//",), ".ts": ("//",), ".jsx": ("//",),
-	".tsx": ("//",), ".java": ("//",), ".c": ("//",), ".h": ("//",), ".cpp": ("//",),
-	".hpp": ("//",), ".cs": ("//",), ".go": ("//",), ".rs": ("//",), ".swift": ("//",),
-	".php": ("//", "#"), ".sql": ("--",), ".lua": ("--",), ".nvgt": ("//",),
+	".py": ("#",),
+	".rb": ("#",),
+	".sh": ("#",),
+	".bash": ("#",),
+	".yaml": ("#",),
+	".yml": ("#",),
+	".toml": ("#",),
+	".js": ("//",),
+	".ts": ("//",),
+	".jsx": ("//",),
+	".tsx": ("//",),
+	".java": ("//",),
+	".c": ("//",),
+	".h": ("//",),
+	".cpp": ("//",),
+	".hpp": ("//",),
+	".cs": ("//",),
+	".go": ("//",),
+	".rs": ("//",),
+	".swift": ("//",),
+	".php": ("//", "#"),
+	".sql": ("--",),
+	".lua": ("--",),
+	".nvgt": ("//",),
 }
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 LONG_LINE = 200
@@ -23,8 +42,7 @@ def parse_python(document: Document) -> ast.Module:
 	try:
 		return ast.parse(document.text, filename=document.relpath)
 	except SyntaxError as exc:
-		raise TulesError(
-			f"Cannot parse {document.relpath}: {exc.msg}", line=exc.lineno) from exc
+		raise TulesError(f"Cannot parse {document.relpath}: {exc.msg}", line=exc.lineno) from exc
 
 
 class CodeAnalyzer:
@@ -62,12 +80,14 @@ class CodeAnalyzer:
 		symbols = []
 		for node in ast.walk(tree):
 			if isinstance(node, DEFINITIONS):
-				symbols.append({
-					"kind": "class" if isinstance(node, ast.ClassDef) else "function",
-					"name": node.name,
-					"line": node.lineno,
-					"docstring": (ast.get_docstring(node) or "")[:120],
-				})
+				symbols.append(
+					{
+						"kind": "class" if isinstance(node, ast.ClassDef) else "function",
+						"name": node.name,
+						"line": node.lineno,
+						"docstring": (ast.get_docstring(node) or "")[:120],
+					}
+				)
 			elif isinstance(node, (ast.Import, ast.ImportFrom)):
 				symbols.append({"kind": "import", "name": _import_label(node), "line": node.lineno})
 		return sorted(symbols, key=lambda item: item["line"])
@@ -93,9 +113,13 @@ class Reviewer:
 		document = self.workspace.load(relpath, strict=False)
 		if document.path.suffix != ".py":
 			return [
-				{"severity": "info", "line": number,
-					"message": f"Very long line ({len(line)} chars)"}
-				for number, line in enumerate(document.lines, 1) if len(line) > LONG_LINE * 1.5
+				{
+					"severity": "info",
+					"line": number,
+					"message": f"Very long line ({len(line)} chars)",
+				}
+				for number, line in enumerate(document.lines, 1)
+				if len(line) > LONG_LINE * 1.5
 			]
 		try:
 			tree = ast.parse(document.text, filename=document.relpath)
@@ -180,11 +204,15 @@ class Reviewer:
 				if not isinstance(node, DEFINITIONS):
 					continue
 				if node.name in seen:
-					issues.append({
-						"severity": "warning",
-						"line": node.lineno,
-						"message": f"Redefinition of {node.name} (first at line {seen[node.name]})",
-					})
+					issues.append(
+						{
+							"severity": "warning",
+							"line": node.lineno,
+							"message": (
+								f"Redefinition of {node.name} (first at line {seen[node.name]})"
+							),
+						}
+					)
 				else:
 					seen[node.name] = node.lineno
 		return issues
@@ -193,18 +221,22 @@ class Reviewer:
 		issues = []
 		for number, line in enumerate(document.lines, 1):
 			if len(line) > LONG_LINE:
-				issues.append({
-					"severity": "info",
-					"line": number,
-					"message": f"Line over {LONG_LINE} chars ({len(line)})",
-				})
+				issues.append(
+					{
+						"severity": "info",
+						"line": number,
+						"message": f"Line over {LONG_LINE} chars ({len(line)})",
+					}
+				)
 			indent = line[: len(line) - len(line.lstrip())]
 			if "\t" in indent and " " in indent:
-				issues.append({
-					"severity": "warning",
-					"line": number,
-					"message": "Mixed tabs and spaces in the indentation",
-				})
+				issues.append(
+					{
+						"severity": "warning",
+						"line": number,
+						"message": "Mixed tabs and spaces in the indentation",
+					}
+				)
 		return issues
 
 	def _duplicates_within(self, document: Document) -> List[Dict[str, Any]]:
@@ -215,12 +247,14 @@ class Reviewer:
 			if not isinstance(node, DEFINITIONS):
 				continue
 			if node.name in seen:
-				duplicates.append({
-					"name": node.name,
-					"file": document.relpath,
-					"first_line": seen[node.name],
-					"duplicate_line": node.lineno,
-				})
+				duplicates.append(
+					{
+						"name": node.name,
+						"file": document.relpath,
+						"first_line": seen[node.name],
+						"duplicate_line": node.lineno,
+					}
+				)
 			else:
 				seen[node.name] = node.lineno
 		return duplicates
@@ -239,11 +273,13 @@ class Reviewer:
 					continue
 				previous = seen.get(node.name)
 				if previous and previous["file"] != document.relpath:
-					duplicates.append({
-						"name": node.name,
-						"first": f"{previous['file']}:{previous['line']}",
-						"duplicate": f"{document.relpath}:{node.lineno}",
-					})
+					duplicates.append(
+						{
+							"name": node.name,
+							"first": f"{previous['file']}:{previous['line']}",
+							"duplicate": f"{document.relpath}:{node.lineno}",
+						}
+					)
 				elif not previous:
 					seen[node.name] = {"file": document.relpath, "line": node.lineno}
 		return duplicates

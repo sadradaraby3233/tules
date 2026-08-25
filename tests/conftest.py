@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tules.agent import Agent
 from tules.workspace import Workspace
 
-SAMPLE = '''import os
+SAMPLE = """import os
 
 
 def greet(name):
@@ -18,7 +18,7 @@ def greet(name):
 class Widget:
 	def build(self):
 		return greet("widget")
-'''
+"""
 
 
 @pytest.fixture

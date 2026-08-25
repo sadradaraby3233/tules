@@ -15,8 +15,7 @@ class Clipboard:
 		try:
 			import pyperclip
 		except ImportError as exc:
-			raise SystemExit(
-				"pyperclip is required: pip install pyperclip") from exc
+			raise SystemExit("pyperclip is required: pip install pyperclip") from exc
 		self._backend = pyperclip
 
 	def read(self) -> str:
@@ -40,6 +39,7 @@ def beep() -> None:
 	try:
 		if system == "Windows":
 			import winsound
+
 			winsound.Beep(BEEP_FREQUENCY, BEEP_MILLISECONDS)
 			return
 		if system == "Darwin":
