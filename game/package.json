@@ -1,0 +1,16 @@
+{
+  "name": "cheetosco",
+  "version": "1.0.0",
+  "description": "Cheetos Co. - A blind-accessible audio adventure game",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "python3 -m http.server 8000"
+  },
+  "keywords": ["game", "audio", "accessible", "blind"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  }
+}

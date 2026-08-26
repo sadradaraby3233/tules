@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.html
+!index.html
+.DS_Store
