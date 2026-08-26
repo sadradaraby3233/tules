@@ -1581,7 +1581,9 @@ html, body {
     stack.push(m);
     if (!noSound) playSound(SOUNDS.focus, { out: getSfxBus() });
     render();
-    bindGestures();
+    if (stack.length === 1) {
+      bindGestures();
+    }
     speakIndex(0);
     return m;
   }
@@ -1603,8 +1605,11 @@ html, body {
       }
     }
     render();
-    if (stack.length) speakIndex(stack[stack.length - 1].index);
-    else unbindGestures();
+    if (stack.length) {
+      speakIndex(stack[stack.length - 1].index);
+    } else {
+      unbindGestures();
+    }
   }
   function closeAll() {
     stack = [];
@@ -1613,7 +1618,7 @@ html, body {
     unbindGestures();
   }
   function bindGestures() {
-    unbindGestures();
+    if (gestureCleanup.length > 0) return;
     const up = onAction("up", () => move(-1));
     const down = onAction("down", () => move(1));
     const swipeUp = onAction("swipe-up", () => move(-1));
@@ -1645,7 +1650,6 @@ html, body {
     }
     top.index = idx;
     render();
-    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
     speakIndex(idx);
   }
   function select() {
@@ -1666,7 +1670,7 @@ html, body {
     const item = top.items[i];
     if (!item) return;
     const label = typeof item.label === "string" ? item.label : item.text || "";
-    say(label, { blip: "focus" });
+    say(label, { blip: "focus", interrupt: true });
   }
   function render() {
     if (!stack.length) {
