@@ -42,6 +42,7 @@ body{
   display:flex;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 40%, #241a0e, #050507 75%);
   cursor:pointer;
+  touch-action:manipulation;
 }
 .gate-card{text-align:center;padding:2rem;max-width:520px;}
 .gate-card h1{
@@ -127,6 +128,7 @@ body.touch .touchpad{display:block;}
   display:none;align-items:center;justify-content:center;
   background:rgba(5,5,8,.78);backdrop-filter:blur(3px);
   padding:1rem;
+  touch-action:none;
 }
 .menu.open{display:flex;}
 .menu-card{
@@ -898,11 +900,11 @@ body.touch .touchpad{display:block;}
     if (!menuEl) {
       menuEl = document.createElement("div");
       menuEl.id = "menu-root";
+      menuEl.style.cssText = "position:fixed;inset:0;z-index:39;pointer-events:none;";
       document.body.appendChild(menuEl);
     }
     document.addEventListener("keydown", (e) => {
       if (!stack.length) return;
-      const top = stack[stack.length - 1];
       if (e.code === "ArrowUp" || e.code === "KeyW") {
         e.preventDefault();
         move(-1);
@@ -915,8 +917,49 @@ body.touch .touchpad{display:block;}
       } else if (e.code === "Escape" || e.code === "KeyK" || e.code === "KeyZ") {
         e.preventDefault();
         closeTop();
+      } else if (e.code === "Home") {
+        e.preventDefault();
+        goFirst();
+      } else if (e.code === "End") {
+        e.preventDefault();
+        goLast();
       }
     });
+  }
+  function onTouchStart(e) {
+    if (!stack.length) return;
+    const t = e.touches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchStartTime = Date.now();
+  }
+  function onTouchEnd(e) {
+    if (!stack.length) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+    const dt = Date.now() - touchStartTime;
+    if (dt > SWIPE_MAX_TIME) return;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    if (absDx > SWIPE_THRESHOLD || absDy > SWIPE_THRESHOLD) {
+      if (absDx > absDy) {
+        if (dx < 0) goFirst();
+        else goLast();
+      } else {
+        if (dy < 0) move(-1);
+        else move(1);
+      }
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTapTime < DOUBLE_TAP_MAX_GAP) {
+      lastTapTime = 0;
+      select();
+    } else {
+      lastTapTime = now;
+      speakIndex(stack[stack.length - 1].index);
+    }
   }
   function isMenuOpen() {
     return stack.length > 0;
@@ -958,7 +1001,6 @@ body.touch .touchpad{display:block;}
   function move(d) {
     const top = stack[stack.length - 1];
     if (!top) return;
-    const enabled = top.items.filter((i) => !i.disabled);
     let idx = top.index;
     for (let attempt = 0; attempt < top.items.length; attempt++) {
       idx = (idx + d + top.items.length) % top.items.length;
@@ -968,6 +1010,32 @@ body.touch .touchpad{display:block;}
     render();
     playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
     speakIndex(idx);
+  }
+  function goFirst() {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    for (let i = 0; i < top.items.length; i++) {
+      if (!top.items[i].disabled) {
+        top.index = i;
+        break;
+      }
+    }
+    render();
+    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
+    speakIndex(top.index);
+  }
+  function goLast() {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    for (let i = top.items.length - 1; i >= 0; i--) {
+      if (!top.items[i].disabled) {
+        top.index = i;
+        break;
+      }
+    }
+    render();
+    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
+    speakIndex(top.index);
   }
   function select() {
     const top = stack[stack.length - 1];
@@ -987,15 +1055,18 @@ body.touch .touchpad{display:block;}
     const item = top.items[i];
     if (!item) return;
     const label = typeof item.label === "string" ? item.label : item.text || "";
-    say(label, { blip: "focus" });
+    const pos = `${i + 1} of ${top.items.length}. `;
+    say(pos + label, { blip: "focus" });
   }
   function render() {
     if (!stack.length) {
       menuEl.innerHTML = "";
+      menuEl.style.pointerEvents = "none";
       menuEl.classList.remove("open");
       return;
     }
     menuEl.classList.add("open");
+    menuEl.style.pointerEvents = "auto";
     const top = stack[stack.length - 1];
     const itemsHtml = top.items.map((it, i) => {
       const label = it.label || it.text || "";
@@ -1003,7 +1074,7 @@ body.touch .touchpad{display:block;}
       const disabled = it.disabled ? "disabled" : "";
       const focused = i === top.index ? "focused" : "";
       const tag = it.tag ? `<span class="tag">${it.tag}</span>` : "";
-      return `<button class="mi ${focused}" data-i="${i}" ${disabled}>
+      return `<button class="mi ${focused}" data-i="${i}" ${disabled} aria-label="${label}">
       <span class="lbl">${label}${tag}</span>
       ${hint ? `<span class="k">${hint}</span>` : ""}
     </button>`;
@@ -1016,23 +1087,24 @@ body.touch .touchpad{display:block;}
         ${top.subtitle ? `<div class="menu-sub">${top.subtitle}</div>` : ""}
         <div class="menu-list">${itemsHtml}</div>
         ${foot}
-        <div class="menu-foot">Up/Down to choose, Enter to select, Escape to go back.</div>
+        <div class="menu-foot">Swipe up/down to browse. Double-tap to select. Tap to hear again.</div>
       </div>
     </div>`;
+    const menuOverlay = menuEl.querySelector(".menu");
+    if (menuOverlay) {
+      menuOverlay.addEventListener("touchstart", onTouchStart, { passive: true });
+      menuOverlay.addEventListener("touchend", onTouchEnd, { passive: false });
+    }
     menuEl.querySelectorAll(".mi").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
         const i = parseInt(btn.dataset.i, 10);
         top.index = i;
         select();
       });
-      btn.addEventListener("mouseenter", () => {
-        top.index = parseInt(btn.dataset.i, 10);
-        render();
-        speakIndex(top.index);
-      });
     });
   }
-  var menuEl, stack;
+  var menuEl, stack, touchStartX, touchStartY, touchStartTime, lastTapTime, SWIPE_THRESHOLD, SWIPE_MAX_TIME, DOUBLE_TAP_MAX_GAP;
   var init_menu = __esm({
     "src/ui/menu.js"() {
       init_speech();
@@ -1041,6 +1113,13 @@ body.touch .touchpad{display:block;}
       init_sounds();
       menuEl = null;
       stack = [];
+      touchStartX = 0;
+      touchStartY = 0;
+      touchStartTime = 0;
+      lastTapTime = 0;
+      SWIPE_THRESHOLD = 40;
+      SWIPE_MAX_TIME = 500;
+      DOUBLE_TAP_MAX_GAP = 350;
     }
   });
 
@@ -5471,19 +5550,18 @@ body.touch .touchpad{display:block;}
   init_speech();
   var delay = (ms) => new Promise((r) => setTimeout(r, ms));
   async function testSpeakers() {
-    say("Testing speakers. You should hear a tone on your left, then center, then right.", { blip: "blip" });
-    await delay(1800);
-    say("Left.", { blip: false });
     playSound(SOUNDS.test_left, { out: getSfxBus() });
-    await delay(1100);
-    say("Center.", { blip: false });
+    await delay(600);
+    say("Left", { blip: false });
+    await delay(900);
     playSound(SOUNDS.test_center, { out: getSfxBus() });
-    await delay(1100);
-    say("Right.", { blip: false });
+    await delay(600);
+    say("Center", { blip: false });
+    await delay(900);
     playSound(SOUNDS.test_right, { out: getSfxBus() });
-    await delay(1100);
-    say("Test complete. If you could tell left from right, you are ready to play.", { blip: "success" });
-    await delay(2400);
+    await delay(600);
+    say("Right", { blip: false });
+    await delay(1200);
   }
 
   // src/main.js
@@ -5568,8 +5646,9 @@ body.touch .touchpad{display:block;}
   }
   var gate = document.getElementById("gate");
   var booting = false;
+  var booted_ok = false;
   async function kick(e) {
-    if (booting) return;
+    if (booting || booted_ok) return;
     booting = true;
     if (e) {
       e.preventDefault();
@@ -5577,20 +5656,21 @@ body.touch .touchpad{display:block;}
     }
     try {
       await boot();
+      booted_ok = true;
+      document.removeEventListener("touchstart", kick);
+      document.removeEventListener("click", kick);
+      window.removeEventListener("keydown", kick);
     } catch (err) {
       console.error("Boot failed:", err);
-      const hint = document.getElementById("gate");
-      if (hint) {
-        hint.innerHTML = `<div class="gate-card"><h1>ERROR</h1><p class="hint">${err.message}</p><p class="hint">Tap to retry</p></div>`;
-        booting = false;
+      booting = false;
+      if (gate) {
+        gate.innerHTML = '<div class="gate-card"><h1>ERROR</h1><p class="hint">' + (err.message || "Something went wrong") + '</p><p class="hint">Tap to retry</p></div>';
       }
     }
   }
-  if (gate) {
-    gate.addEventListener("touchstart", kick, { once: true, passive: false });
-    gate.addEventListener("click", kick, { once: true });
-  }
-  window.addEventListener("keydown", kick, { once: true });
+  document.addEventListener("touchstart", kick, { passive: false });
+  document.addEventListener("click", kick);
+  window.addEventListener("keydown", kick);
 })();
 
 </script>
