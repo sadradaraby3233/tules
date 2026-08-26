@@ -3,168 +3,86 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<meta name="theme-color" content="#111111" />
+<meta name="theme-color" content="#000000" />
 <title>Cheetos Co. — An Audio Adventure</title>
 <style>
-:root{
-  --bg:#0a0a0c;
-  --fg:#f4f1e8;
-  --accent:#ff7a00;     /* cheddar orange */
-  --accent2:#ffb347;
-  --danger:#ff4d4d;
-  --ok:#6ee07a;
-  --panel:#15151a;
-  --line:#2a2a33;
-  --muted:#9a9aa6;
-  font-size: 18px;
+/* ============================================================================
+   CHEETOS CO. — Pure audio game styles (everything invisible)
+   ============================================================================ */
+
+:root {
+  --bg: #000000;
 }
 
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{margin:0;height:100%;overscroll-behavior:none;}
-body{
-  background:radial-gradient(circle at 50% 30%, #1a1612 0%, #07070a 70%);
-  color:var(--fg);
-  font-family: "Trebuchet MS", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  touch-action:none;
-  user-select:none;
-  -webkit-user-select:none;
-  overflow:hidden;
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
 }
 
-.sr-only{
-  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
-  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-/* ---------- Tap gate ---------- */
-.gate{
-  position:fixed;inset:0;z-index:50;
-  display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(circle at 50% 40%, #241a0e, #050507 75%);
-  cursor:pointer;
-  touch-action:manipulation;
+/* Invisible gate - just captures first touch */
+#gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  cursor: pointer;
 }
-.gate-card{text-align:center;padding:2rem;max-width:520px;}
-.gate-card h1{
-  font-size: clamp(2.4rem, 9vw, 4.5rem);
-  margin:0 0 .2rem; letter-spacing:.04em;
-  background:linear-gradient(180deg,#ffd089,#ff7a00 60%,#c84a00);
-  -webkit-background-clip:text;background-clip:text;color:transparent;
-  text-shadow:0 0 40px rgba(255,122,0,.25);
-}
-.tagline{color:var(--accent2);font-style:italic;margin:.2rem 0 1.6rem;font-size:1.1rem;}
-.hint{color:var(--muted);line-height:1.5;}
-.pulse{
-  margin:2rem auto 0;width:80px;height:80px;border-radius:50%;
-  background:radial-gradient(circle, rgba(255,122,0,.55), rgba(255,122,0,0) 70%);
-  animation:pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse{0%,100%{transform:scale(.7);opacity:.6}50%{transform:scale(1.2);opacity:1}}
 
-/* ---------- Stage ---------- */
-.stage{position:fixed;inset:0;}
-#radar{position:absolute;inset:0;width:100%;height:100%;opacity:.5;}
-.caption{
-  position:absolute;left:0;right:0;bottom:calc(38% + env(safe-area-inset-bottom));
-  text-align:center;padding:0 1rem;
-  font-size:clamp(1rem,2.6vw,1.4rem);
-  color:var(--fg);text-shadow:0 2px 12px #000;
-  letter-spacing:.02em;
+#gate.hidden {
+  display: none;
 }
-.toast{
-  position:absolute;top:calc(1rem + env(safe-area-inset-top));left:50%;
-  transform:translateX(-50%) translateY(-20px);
-  background:rgba(20,16,10,.92);border:1px solid var(--accent);
-  color:var(--accent2);padding:.6rem 1.1rem;border-radius:999px;
-  font-weight:bold;opacity:0;transition:opacity .25s, transform .25s;
-  pointer-events:none;max-width:90vw;text-align:center;
-}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-/* ---------- Touch D-pad ---------- */
-.touchpad{
-  position:fixed;left:0;right:0;bottom:0;
-  height:38%;
-  display:none; /* shown only on touch devices via .touch body class */
-  z-index:20;
+/* Invisible touch surface for all game interactions */
+#stage {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
 }
-body.touch .touchpad{display:block;}
 
-.dpad{
-  position:absolute;
-  width:22vw;height:22vw;max-width:110px;max-height:110px;
-  min-width:64px;min-height:64px;
-  border-radius:50%;
-  background:radial-gradient(circle at 35% 30%, #2c2c36, #14141a);
-  border:2px solid #3a3a46;
-  color:var(--fg);font-size:1.4rem;
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 6px 18px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
+/* Hidden live regions (for screen readers only) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
-.dpad:active{background:radial-gradient(circle at 35% 30%, #3a3a46, #1c1c24);}
-.dpad.center{background:radial-gradient(circle at 35% 30%, #4a2c10, #2a1600);border-color:var(--accent);color:var(--accent2);}
-.dpad.up{left:28%;bottom:14%;}
-.dpad.down{left:28%;bottom:2%;}
-.dpad.left{left:14%;bottom:8%;}
-.dpad.right{left:42%;bottom:8%;}
-.dpad.center{left:28%;bottom:8%;opacity:.0;} /* center is the interact button hidden under overlap? keep accessible */
 
-.action{
-  position:absolute;
-  width:18vw;height:18vw;max-width:90px;max-height:90px;min-width:56px;min-height:56px;
-  border-radius:50%;border:2px solid #3a3a46;
-  font-size:1.2rem;font-weight:bold;color:var(--fg);
-  background:radial-gradient(circle at 35% 30%, #2c2c36, #14141a);
-  bottom:6%;
+/* Menu overlay - invisible but captures gestures */
+#menu-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  background: transparent;
 }
-.action:active{transform:scale(.94);}
-.action.a{right:18%;background:radial-gradient(circle at 35% 30%, #4a2c10, #2a1600);border-color:var(--accent);color:var(--accent2);}
-.action.b{right:4%;bottom:16%;}
-.action.m{right:4%;bottom:2%;}
 
-/* ---------- Menus (visual overlay, also navigable by screen reader) ---------- */
-.menu{
-  position:fixed;inset:0;z-index:40;
-  display:none;align-items:center;justify-content:center;
-  background:rgba(5,5,8,.78);backdrop-filter:blur(3px);
-  padding:1rem;
-  touch-action:none;
+#menu-root.open {
+  display: block;
 }
-.menu.open{display:flex;}
-.menu-card{
-  width:min(560px,94vw);
-  max-height:86vh;overflow:auto;
-  background:linear-gradient(180deg,#1b1b22,#101015);
-  border:1px solid var(--line);border-radius:18px;
-  padding:1.2rem 1rem;
-  box-shadow:0 20px 60px rgba(0,0,0,.7);
-}
-.menu-title{
-  margin:0 0 .8rem;text-align:center;font-size:1.6rem;
-  color:var(--accent2);letter-spacing:.03em;
-}
-.menu-sub{text-align:center;color:var(--muted);margin:-.4rem 0 .9rem;font-size:.95rem;}
-.mi{
-  display:flex;align-items:center;justify-content:space-between;gap:1rem;
-  width:100%;text-align:left;
-  padding:.95rem 1rem;margin:.25rem 0;border-radius:12px;
-  background:#18181f;border:1px solid #262630;color:var(--fg);
-  font-size:1.1rem;cursor:pointer;
-}
-.mi:focus,.mi.focused{outline:none;border-color:var(--accent);background:#211a12;box-shadow:0 0 0 3px rgba(255,122,0,.2);}
-.mi .k{color:var(--muted);font-size:.85rem;}
-.mi:disabled{opacity:.45;}
-.menu-foot{margin-top:.8rem;text-align:center;color:var(--muted);font-size:.85rem;}
-.divider{height:1px;background:var(--line);margin:.6rem .4rem;}
-.bar{
-  height:14px;border-radius:8px;background:#0c0c10;border:1px solid #2a2a33;overflow:hidden;margin:.3rem 0 .7rem;
-}
-.bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));}
-.row{display:flex;justify-content:space-between;color:var(--muted);font-size:.9rem;margin:.2rem 0;}
-.tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;background:#221a10;color:var(--accent2);font-size:.8rem;margin-left:.4rem;}
 
-@media (prefers-reduced-motion: reduce){
-  .pulse{animation:none;}
+/* Prevent any visual rendering of menu items */
+#menu-root * {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 </style>
@@ -174,53 +92,28 @@ body.touch .touchpad{display:block;}
   ============================================================================
   CHEETOS CO. — A BLIND-ACCESSIBLE AUDIO GAME
   ============================================================================
-  This game has no meaningful visuals. Everything is sound.
-  The screen below is a tactile/visual reference + touch surface.
-
-  Architecture (data driven, easy to expand):
-    src/data/        <- items, recipes, rooms, npcs, dialogue, quests, menus
-    src/audio/       <- procedural synth engine, positional 3D audio, speech
-    src/core/        <- input, state, save, menus, event bus
-    src/systems/     <- inventory, crafting, jobs, economy
-    src/world/       <- movement, rooms, interactables
-  To add content: edit data files. To add a sound: add an entry to sounds.js.
+  No visual elements. Everything is sound and speech.
+  Interaction: touch gestures (swipe/tap) or keyboard.
   ============================================================================
 -->
 
 <div id="app" role="application" aria-label="Cheetos Co audio game">
 
-  <!-- The tap-to-start gate (required by browsers for audio) -->
-  <div id="gate" class="gate">
-    <div class="gate-card">
-      <h1>CHEETOS&nbsp;CO.</h1>
-      <p class="tagline">An audio adventure in crunchy corporate life.</p>
-      <p class="hint">Put on headphones. Tap anywhere, or press any key, to begin.</p>
-      <div class="pulse" aria-hidden="true"></div>
-    </div>
-  </div>
+  <!-- Invisible gate: just needs to exist to capture first touch for audio unlock -->
+  <div id="gate" class="gate" aria-label="Tap anywhere to begin"></div>
 
-  <!-- Visual reference: what your ears are doing (purely decorative) -->
+  <!-- Invisible touch surface for all game interactions -->
   <div id="stage" class="stage" aria-hidden="true">
-    <canvas id="radar"></canvas>
-    <div id="caption" class="caption"></div>
-    <div id="toast" class="toast"></div>
+    <!-- Canvas hidden but kept for potential visual debugging -->
+    <canvas id="radar" style="display:none;"></canvas>
   </div>
 
-  <!-- Live region for screen readers / quick announcements -->
+  <!-- Hidden live regions for screen readers (optional accessibility) -->
   <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
   <div id="live-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
-  <!-- Touch controls (shown on touch devices; keyboard always works) -->
-  <div id="touchpad" class="touchpad" aria-hidden="true">
-    <button class="dpad up"    data-hold="up">▲</button>
-    <button class="dpad left"  data-hold="left">◀</button>
-    <button class="dpad center" data-tap="interact">●</button>
-    <button class="dpad right" data-hold="right">▶</button>
-    <button class="dpad down"  data-hold="down">▼</button>
-    <button class="action a" data-tap="actionA">A</button>
-    <button class="action b" data-tap="back">B</button>
-    <button class="action m" data-tap="menu">☰</button>
-  </div>
+  <!-- Menu root: invisible overlay for menu gestures -->
+  <div id="menu-root"></div>
 
 </div>
 
@@ -335,55 +228,136 @@ body.touch .touchpad{display:block;}
     }
   });
 
-  // src/core/events.js
-  var events_exports = {};
-  __export(events_exports, {
-    EVT: () => EVT,
-    emit: () => emit,
-    off: () => off,
-    on: () => on
-  });
-  function on(event, fn) {
-    if (!listeners.has(event)) listeners.set(event, /* @__PURE__ */ new Set());
-    listeners.get(event).add(fn);
-    return () => off(event, fn);
+  // src/core/input.js
+  function initInput() {
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: false });
+    document.addEventListener("keydown", handleKeyDown);
   }
-  function off(event, fn) {
-    listeners.get(event)?.delete(fn);
+  function handleTouchStart(e) {
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
   }
-  function emit(event, payload) {
-    const set = listeners.get(event);
+  function handleTouchEnd(e) {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const deltaTime = Date.now() - touchStartTime;
+    if (Math.abs(deltaX) > SWIPE_THRESHOLD || Math.abs(deltaY) > SWIPE_THRESHOLD) {
+      if (tapTimeout) {
+        clearTimeout(tapTimeout);
+        tapTimeout = null;
+      }
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        if (deltaX > 0) {
+          fire("swipe-right");
+        } else {
+          fire("swipe-left");
+        }
+      } else {
+        if (deltaY > 0) {
+          fire("swipe-down");
+        } else {
+          fire("swipe-up");
+        }
+      }
+      return;
+    }
+    const currentTime = Date.now();
+    if (currentTime - lastTapTime < DOUBLE_TAP_DELAY) {
+      if (tapTimeout) {
+        clearTimeout(tapTimeout);
+        tapTimeout = null;
+      }
+      fire("double-tap");
+      lastTapTime = 0;
+    } else {
+      lastTapTime = currentTime;
+      tapTimeout = setTimeout(() => {
+        fire("tap");
+        tapTimeout = null;
+      }, DOUBLE_TAP_DELAY);
+    }
+  }
+  function handleKeyDown(e) {
+    switch (e.code) {
+      case "ArrowUp":
+      case "KeyW":
+        e.preventDefault();
+        fire("up");
+        break;
+      case "ArrowDown":
+      case "KeyS":
+        e.preventDefault();
+        fire("down");
+        break;
+      case "ArrowLeft":
+      case "KeyA":
+        e.preventDefault();
+        fire("left");
+        break;
+      case "ArrowRight":
+      case "KeyD":
+        e.preventDefault();
+        fire("right");
+        break;
+      case "Space":
+      case "Enter":
+        e.preventDefault();
+        fire("interact");
+        break;
+      case "Escape":
+      case "Backspace":
+        e.preventDefault();
+        fire("back");
+        break;
+      case "Tab":
+        e.preventDefault();
+        fire("scan");
+        break;
+      case "KeyI":
+        e.preventDefault();
+        fire("inventory");
+        break;
+      case "KeyM":
+        e.preventDefault();
+        fire("menu");
+        break;
+    }
+  }
+  function onAction(action, fn) {
+    if (!handlers.has(action)) handlers.set(action, /* @__PURE__ */ new Set());
+    handlers.get(action).add(fn);
+    return () => handlers.get(action)?.delete(fn);
+  }
+  function fire(action) {
+    const set = handlers.get(action);
     if (!set) return;
     for (const fn of set) {
       try {
-        fn(payload);
+        fn(action);
       } catch (e) {
-        console.error(event, e);
+        console.error(`Action handler error for '${action}':`, e);
       }
     }
   }
-  var listeners, EVT;
-  var init_events = __esm({
-    "src/core/events.js"() {
-      listeners = /* @__PURE__ */ new Map();
-      EVT = {
-        MOVE: "move",
-        ENTER_ROOM: "enter_room",
-        INTERACT: "interact",
-        DIALOGUE: "dialogue",
-        CRAFT_START: "craft_start",
-        CRAFT_DONE: "craft_done",
-        INVENTORY: "inventory",
-        MONEY: "money",
-        XP: "xp",
-        LEVEL: "level",
-        SELL: "sell",
-        COLLECT: "collect",
-        QUEST: "quest",
-        TOAST: "toast",
-        SPEAK: "speak",
-        STATE: "state"
-      };
+  function clearActions() {
+    handlers.clear();
+  }
+  var handlers, SWIPE_THRESHOLD, DOUBLE_TAP_DELAY, lastTapTime, touchStartX, touchStartY, touchStartTime, tapTimeout;
+  var init_input = __esm({
+    "src/core/input.js"() {
+      handlers = /* @__PURE__ */ new Map();
+      SWIPE_THRESHOLD = 40;
+      DOUBLE_TAP_DELAY = 350;
+      lastTapTime = 0;
+      touchStartX = 0;
+      touchStartY = 0;
+      touchStartTime = 0;
+      tapTimeout = null;
     }
   });
 
@@ -934,11 +908,11 @@ body.touch .touchpad{display:block;}
     currentUtter = null;
   }
   function live(text, assertive = false) {
-    const el2 = document.getElementById(assertive ? "live-assertive" : "live");
-    if (el2) {
-      el2.textContent = "";
+    const el = document.getElementById(assertive ? "live-assertive" : "live");
+    if (el) {
+      el.textContent = "";
       setTimeout(() => {
-        el2.textContent = text;
+        el.textContent = text;
       }, 30);
     }
   }
@@ -959,15 +933,59 @@ body.touch .touchpad{display:block;}
     }
   });
 
-  // src/data/rooms.js
-  var rooms_exports = {};
-  __export(rooms_exports, {
-    DOORS: () => DOORS,
-    OBJECTS: () => OBJECTS,
-    ROOMS: () => ROOMS,
-    START: () => START,
-    WORLD: () => WORLD
+  // src/core/events.js
+  var events_exports = {};
+  __export(events_exports, {
+    EVT: () => EVT,
+    emit: () => emit,
+    off: () => off,
+    on: () => on
   });
+  function on(event, fn) {
+    if (!listeners.has(event)) listeners.set(event, /* @__PURE__ */ new Set());
+    listeners.get(event).add(fn);
+    return () => off(event, fn);
+  }
+  function off(event, fn) {
+    listeners.get(event)?.delete(fn);
+  }
+  function emit(event, payload) {
+    const set = listeners.get(event);
+    if (!set) return;
+    for (const fn of set) {
+      try {
+        fn(payload);
+      } catch (e) {
+        console.error(event, e);
+      }
+    }
+  }
+  var listeners, EVT;
+  var init_events = __esm({
+    "src/core/events.js"() {
+      listeners = /* @__PURE__ */ new Map();
+      EVT = {
+        MOVE: "move",
+        ENTER_ROOM: "enter_room",
+        INTERACT: "interact",
+        DIALOGUE: "dialogue",
+        CRAFT_START: "craft_start",
+        CRAFT_DONE: "craft_done",
+        INVENTORY: "inventory",
+        MONEY: "money",
+        XP: "xp",
+        LEVEL: "level",
+        SELL: "sell",
+        COLLECT: "collect",
+        QUEST: "quest",
+        TOAST: "toast",
+        SPEAK: "speak",
+        STATE: "state"
+      };
+    }
+  });
+
+  // src/data/rooms.js
   var ROOMS, WORLD, DOORS, OBJECTS, START;
   var init_rooms = __esm({
     "src/data/rooms.js"() {
@@ -1551,65 +1569,7 @@ body.touch .touchpad{display:block;}
     if (!menuEl) {
       menuEl = document.createElement("div");
       menuEl.id = "menu-root";
-      menuEl.style.cssText = "position:fixed;inset:0;z-index:39;pointer-events:none;";
       document.body.appendChild(menuEl);
-    }
-    document.addEventListener("keydown", (e) => {
-      if (!stack.length) return;
-      if (e.code === "ArrowUp" || e.code === "KeyW") {
-        e.preventDefault();
-        move(-1);
-      } else if (e.code === "ArrowDown" || e.code === "KeyS") {
-        e.preventDefault();
-        move(1);
-      } else if (e.code === "Enter" || e.code === "Space" || e.code === "KeyE" || e.code === "KeyJ") {
-        e.preventDefault();
-        select();
-      } else if (e.code === "Escape" || e.code === "KeyK" || e.code === "KeyZ") {
-        e.preventDefault();
-        closeTop();
-      } else if (e.code === "Home") {
-        e.preventDefault();
-        goFirst();
-      } else if (e.code === "End") {
-        e.preventDefault();
-        goLast();
-      }
-    });
-  }
-  function onTouchStart(e) {
-    if (!stack.length) return;
-    const t = e.touches[0];
-    touchStartX = t.clientX;
-    touchStartY = t.clientY;
-    touchStartTime = Date.now();
-  }
-  function onTouchEnd(e) {
-    if (!stack.length) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    const dt = Date.now() - touchStartTime;
-    if (dt > SWIPE_MAX_TIME) return;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-    if (absDx > SWIPE_THRESHOLD || absDy > SWIPE_THRESHOLD) {
-      if (absDx > absDy) {
-        if (dx < 0) goFirst();
-        else goLast();
-      } else {
-        if (dy < 0) move(-1);
-        else move(1);
-      }
-      return;
-    }
-    const now = Date.now();
-    if (now - lastTapTime < DOUBLE_TAP_MAX_GAP) {
-      lastTapTime = 0;
-      select();
-    } else {
-      lastTapTime = now;
-      speakIndex(stack[stack.length - 1].index);
     }
   }
   function isMenuOpen() {
@@ -1621,6 +1581,7 @@ body.touch .touchpad{display:block;}
     stack.push(m);
     if (!noSound) playSound(SOUNDS.focus, { out: getSfxBus() });
     render();
+    bindGestures();
     speakIndex(0);
     return m;
   }
@@ -1643,11 +1604,33 @@ body.touch .touchpad{display:block;}
     }
     render();
     if (stack.length) speakIndex(stack[stack.length - 1].index);
+    else unbindGestures();
   }
   function closeAll() {
     stack = [];
     render();
     cancelSpeech();
+    unbindGestures();
+  }
+  function bindGestures() {
+    unbindGestures();
+    const up = onAction("up", () => move(-1));
+    const down = onAction("down", () => move(1));
+    const swipeUp = onAction("swipe-up", () => move(-1));
+    const swipeDown = onAction("swipe-down", () => move(1));
+    const swipeLeft = onAction("swipe-left", () => closeTop());
+    const swipeRight = onAction("swipe-right", () => closeTop());
+    const tap = onAction("tap", () => speakIndex(stack[stack.length - 1]?.index ?? 0));
+    const doubleTap = onAction("double-tap", () => select());
+    const interact2 = onAction("interact", () => select());
+    const back3 = onAction("back", () => closeTop());
+    gestureCleanup = [up, down, swipeUp, swipeDown, swipeLeft, swipeRight, tap, doubleTap, interact2, back3];
+  }
+  function unbindGestures() {
+    for (const cleanup of gestureCleanup) {
+      if (typeof cleanup === "function") cleanup();
+    }
+    gestureCleanup = [];
   }
   function move(d) {
     const top = stack[stack.length - 1];
@@ -1664,32 +1647,6 @@ body.touch .touchpad{display:block;}
     render();
     playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
     speakIndex(idx);
-  }
-  function goFirst() {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    for (let i = 0; i < top.items.length; i++) {
-      if (!top.items[i].disabled) {
-        top.index = i;
-        break;
-      }
-    }
-    render();
-    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
-    speakIndex(top.index);
-  }
-  function goLast() {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    for (let i = top.items.length - 1; i >= 0; i--) {
-      if (!top.items[i].disabled) {
-        top.index = i;
-        break;
-      }
-    }
-    render();
-    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
-    speakIndex(top.index);
   }
   function select() {
     const top = stack[stack.length - 1];
@@ -1714,50 +1671,13 @@ body.touch .touchpad{display:block;}
   function render() {
     if (!stack.length) {
       menuEl.innerHTML = "";
-      menuEl.style.pointerEvents = "none";
       menuEl.classList.remove("open");
       return;
     }
     menuEl.classList.add("open");
-    menuEl.style.pointerEvents = "auto";
-    const top = stack[stack.length - 1];
-    const itemsHtml = top.items.map((it, i) => {
-      const label = it.label || it.text || "";
-      const hint = it.k || it.hint || "";
-      const disabled = it.disabled ? "disabled" : "";
-      const focused = i === top.index ? "focused" : "";
-      const tag = it.tag ? `<span class="tag">${it.tag}</span>` : "";
-      return `<button class="mi ${focused}" data-i="${i}" ${disabled} aria-label="${label}">
-      <span class="lbl">${label}${tag}</span>
-      ${hint ? `<span class="k">${hint}</span>` : ""}
-    </button>`;
-    }).join("");
-    const foot = top.renderFooter ? `<div class="menu-foot">${top.renderFooter()}</div>` : "";
-    menuEl.innerHTML = `
-    <div class="menu open" role="dialog" aria-modal="true" aria-label="${top.title}">
-      <div class="menu-card">
-        <h2 class="menu-title">${top.title}</h2>
-        ${top.subtitle ? `<div class="menu-sub">${top.subtitle}</div>` : ""}
-        <div class="menu-list">${itemsHtml}</div>
-        ${foot}
-        <div class="menu-foot">Swipe up/down to browse. Double-tap to select. Tap to hear again.</div>
-      </div>
-    </div>`;
-    const menuOverlay = menuEl.querySelector(".menu");
-    if (menuOverlay) {
-      menuOverlay.addEventListener("touchstart", onTouchStart, { passive: true });
-      menuOverlay.addEventListener("touchend", onTouchEnd, { passive: false });
-    }
-    menuEl.querySelectorAll(".mi").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const i = parseInt(btn.dataset.i, 10);
-        top.index = i;
-        select();
-      });
-    });
+    menuEl.innerHTML = "<!-- menu active -->";
   }
-  var menuEl, stack, touchStartX, touchStartY, touchStartTime, lastTapTime, SWIPE_THRESHOLD, SWIPE_MAX_TIME, DOUBLE_TAP_MAX_GAP;
+  var menuEl, stack, gestureCleanup;
   var init_menu = __esm({
     "src/ui/menu.js"() {
       init_speech();
@@ -1765,15 +1685,10 @@ body.touch .touchpad{display:block;}
       init_context();
       init_sounds();
       init_state();
+      init_input();
       menuEl = null;
       stack = [];
-      touchStartX = 0;
-      touchStartY = 0;
-      touchStartTime = 0;
-      lastTapTime = 0;
-      SWIPE_THRESHOLD = 40;
-      SWIPE_MAX_TIME = 500;
-      DOUBLE_TAP_MAX_GAP = 350;
+      gestureCleanup = [];
     }
   });
 
@@ -2022,151 +1937,7 @@ body.touch .touchpad{display:block;}
 
   // src/main.js
   init_context();
-
-  // src/core/input.js
-  init_events();
-  var handlers = /* @__PURE__ */ new Map();
-  var keyMap = {
-    ArrowUp: "up",
-    KeyW: "up",
-    ArrowDown: "down",
-    KeyS: "down",
-    ArrowLeft: "left",
-    KeyA: "left",
-    ArrowRight: "right",
-    KeyD: "right",
-    KeyE: "interact",
-    Enter: "interact",
-    Space: "interact",
-    KeyJ: "actionA",
-    KeyX: "actionA",
-    Escape: "back",
-    KeyK: "back",
-    KeyZ: "back",
-    KeyI: "inventory",
-    KeyM: "menu",
-    Tab: "scan",
-    ShiftLeft: "scan",
-    ShiftRight: "scan",
-    KeyQ: "look",
-    KeyR: "repeat"
-  };
-  var REPEAT = /* @__PURE__ */ new Set(["up", "down", "left", "right"]);
-  var held = /* @__PURE__ */ new Map();
-  var REPEAT_DELAY = 280;
-  var REPEAT_RATE = 130;
-  var initialized = false;
-  function initInput() {
-    if (initialized) return;
-    initialized = true;
-    window.addEventListener("touchstart", () => document.body.classList.add("touch"), { once: true, passive: true });
-    window.addEventListener("keydown", (e) => {
-      const action = keyMap[e.code];
-      if (!action) return;
-      if (REPEAT.has(action)) {
-        if (e.repeat) return;
-        if (held.has(action)) return;
-        fire(action);
-        const t = setTimeout(() => {
-          const iv = setInterval(() => fire(action), REPEAT_RATE);
-          held.set(action, { timeout: null, interval: iv });
-        }, REPEAT_DELAY);
-        held.set(action, { timeout: t, interval: null });
-      } else {
-        fire(action);
-      }
-      e.preventDefault();
-    });
-    window.addEventListener("keyup", (e) => {
-      const action = keyMap[e.code];
-      if (!action || !REPEAT.has(action)) return;
-      const h = held.get(action);
-      if (h) {
-        if (h.timeout) clearTimeout(h.timeout);
-        if (h.interval) clearInterval(h.interval);
-        held.delete(action);
-      }
-    });
-    window.addEventListener("blur", () => {
-      for (const [a, h] of held) {
-        if (h.timeout) clearTimeout(h.timeout);
-        if (h.interval) clearInterval(h.interval);
-      }
-      held.clear();
-    });
-    document.querySelectorAll("[data-hold]").forEach((btn) => {
-      const action = btn.dataset.hold;
-      const start = (e) => {
-        e.preventDefault();
-        btn.classList.add("held");
-        fire(action);
-        const iv = setInterval(() => fire(action), REPEAT_RATE);
-        held.set(action, { timeout: null, interval: iv });
-      };
-      const end = (e) => {
-        e.preventDefault();
-        btn.classList.remove("held");
-        const h = held.get(action);
-        if (h?.interval) clearInterval(h.interval);
-        held.delete(action);
-      };
-      btn.addEventListener("touchstart", start, { passive: false });
-      btn.addEventListener("touchend", end, { passive: false });
-      btn.addEventListener("touchcancel", end, { passive: false });
-      btn.addEventListener("mousedown", start);
-      btn.addEventListener("mouseup", end);
-      btn.addEventListener("mouseleave", end);
-    });
-    document.querySelectorAll("[data-tap]").forEach((btn) => {
-      const action = btn.dataset.tap;
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        fire(action);
-      });
-    });
-    let sx = 0, sy = 0, st = 0;
-    const stage = document.getElementById("stage");
-    stage.addEventListener("touchstart", (e) => {
-      const t = e.changedTouches[0];
-      sx = t.clientX;
-      sy = t.clientY;
-      st = Date.now();
-    }, { passive: true });
-    stage.addEventListener("touchend", (e) => {
-      const t = e.changedTouches[0];
-      const dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
-      if (dt > 500 || Math.hypot(dx, dy) < 40) return;
-      if (Math.abs(dx) > Math.abs(dy)) fire(dx > 0 ? "right" : "left");
-      else fire(dy > 0 ? "down" : "up");
-    }, { passive: true });
-    let lastTap = 0;
-    stage.addEventListener("click", () => {
-      const now = Date.now();
-      if (now - lastTap < 320) fire("interact");
-      lastTap = now;
-    });
-  }
-  function onAction(action, fn) {
-    if (!handlers.has(action)) handlers.set(action, /* @__PURE__ */ new Set());
-    handlers.get(action).add(fn);
-    return () => handlers.get(action)?.delete(fn);
-  }
-  function fire(action) {
-    const set = handlers.get(action);
-    if (!set) return;
-    for (const fn of set) {
-      try {
-        fn(action);
-      } catch (e) {
-        console.error(action, e);
-      }
-    }
-  }
-  function clearActions() {
-    handlers.clear();
-  }
-
-  // src/main.js
+  init_input();
   init_menu();
   init_speech();
   init_sounds();
@@ -2373,6 +2144,7 @@ body.touch .touchpad{display:block;}
   init_state();
 
   // src/game.js
+  init_input();
   init_speech();
   init_synth();
   init_context();
@@ -3046,30 +2818,41 @@ body.touch .touchpad{display:block;}
   init_synth();
   init_context();
   init_speech();
-  var el = null;
-  var bar = null;
+  init_context();
   var active = false;
   var t0 = 0;
   var raf = 0;
   var resolveCb = null;
+  var sweepOsc = null;
+  var sweepGain = null;
   function isTimingActive() {
     return active;
   }
   function startTimingMinigame(durationMs = 2200) {
     return new Promise((resolve) => {
       active = true;
-      ensureEl();
-      el.style.display = "flex";
       t0 = performance.now();
       say("Hit the sweet spot!", { blip: "beep_machine" });
+      const audio = ac();
+      if (audio) {
+        sweepOsc = audio.createOscillator();
+        sweepGain = audio.createGain();
+        sweepOsc.type = "sine";
+        sweepOsc.frequency.value = 200;
+        sweepGain.gain.value = 0.08;
+        sweepOsc.connect(sweepGain);
+        sweepGain.connect(getSfxBus());
+        sweepOsc.start();
+      }
       let dinged = false;
       const loop = () => {
         if (!active) return;
         const t = (performance.now() - t0) / durationMs;
         const phase = t % 1;
         const pos = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-        const marker = Math.round(pos * 100);
-        bar.style.left = `calc(${marker}% - 10px)`;
+        if (sweepOsc) {
+          sweepOsc.frequency.value = 200 + pos * 600;
+        }
         const inZone = pos > 0.4 && pos < 0.6;
         if (inZone && !dinged) {
           dinged = true;
@@ -3082,7 +2865,14 @@ body.touch .touchpad{display:block;}
       resolveCb = (hit) => {
         active = false;
         cancelAnimationFrame(raf);
-        el.style.display = "none";
+        if (sweepOsc) {
+          try {
+            sweepOsc.stop();
+          } catch (e) {
+          }
+          sweepOsc = null;
+          sweepGain = null;
+        }
         let bonus = 0;
         if (hit) {
           const t = (performance.now() - t0) / durationMs;
@@ -3111,23 +2901,6 @@ body.touch .touchpad{display:block;}
       return true;
     }
     return false;
-  }
-  function ensureEl() {
-    if (el) return;
-    el = document.createElement("div");
-    el.id = "timing-minigame";
-    el.style.cssText = "position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:60;background:rgba(0,0,0,.6);";
-    el.innerHTML = `
-    <div style="width:min(520px,86vw);text-align:center;">
-      <div style="color:#ffb347;font-size:1.3rem;margin-bottom:1rem;">Hit the sweet spot!</div>
-      <div style="position:relative;height:48px;background:#15151a;border:2px solid #2a2a33;border-radius:12px;overflow:hidden;">
-        <div id="tm-zone" style="position:absolute;left:40%;width:20%;top:0;bottom:0;background:linear-gradient(90deg,rgba(255,122,0,.2),rgba(255,210,120,.35),rgba(255,122,0,.2));"></div>
-        <div id="tm-bar" style="position:absolute;top:-4px;bottom:-4px;width:20px;left:0;background:linear-gradient(180deg,#fff,#ffb347);border-radius:6px;box-shadow:0 0 18px #ff7a00;"></div>
-      </div>
-      <div style="color:#9a9aa6;margin-top:.8rem;">Press E / Space / double-tap when the marker is in the orange zone.</div>
-    </div>`;
-    document.body.appendChild(el);
-    bar = el.querySelector("#tm-bar");
   }
 
   // src/systems/achievements.js
@@ -3310,7 +3083,6 @@ body.touch .touchpad{display:block;}
   }
 
   // src/ui/station.js
-  var progressEl = null;
   function openStation(obj) {
     const recipes = availableRecipes(obj.station);
     const p = getPlayer();
@@ -3339,7 +3111,7 @@ body.touch .touchpad{display:block;}
   }
   async function doCraft(recipe, obj) {
     closeTop();
-    say(`Starting: ${recipe.name}. Press E when the marker hits the sweet spot for bonus quality.`, { blip: "beep_machine" });
+    say(`Starting: ${recipe.name}. Tap when you hear the ding for bonus quality.`, { blip: "beep_machine" });
     const stationSound = SOUNDS[recipe.sound] || SOUNDS.machine_hum;
     const sTimer = setInterval(() => playSound(stationSound, { out: getSfxBus() }), 700);
     const minigame = await startTimingMinigame(2200);
@@ -3359,31 +3131,11 @@ body.touch .touchpad{display:block;}
     checkAchievements();
   }
   function showProgress(name) {
-    let el2 = document.getElementById("craft-progress");
-    if (!el2) {
-      el2 = document.createElement("div");
-      el2.id = "craft-progress";
-      el2.className = "menu open";
-      el2.innerHTML = `<div class="menu-card" style="max-width:440px">
-        <h2 class="menu-title" id="cp-name">Working\u2026</h2>
-        <div class="bar"><i id="cp-bar" style="width:0%"></i></div>
-        <div class="menu-sub" id="cp-pct">0%</div>
-      </div>`;
-      document.body.appendChild(el2);
-    }
-    el2.style.display = "flex";
-    document.getElementById("cp-name").textContent = name;
-    progressEl = el2;
-    updateProgress(0);
+    say("Working...", { blip: false });
   }
   function updateProgress(p) {
-    const bar2 = document.getElementById("cp-bar");
-    const pct2 = document.getElementById("cp-pct");
-    if (bar2) bar2.style.width = Math.round(p * 100) + "%";
-    if (pct2) pct2.textContent = Math.round(p * 100) + "%";
   }
   function hideProgress() {
-    if (progressEl) progressEl.style.display = "none";
   }
 
   // src/world/player.js
@@ -4875,21 +4627,8 @@ body.touch .touchpad{display:block;}
 
   // src/ui/hud.js
   init_events();
-  init_state();
-  var captionEl;
-  var toastEl;
-  var toastTimer;
-  var radar;
-  var ctx2;
+  init_speech();
   function initHud() {
-    captionEl = document.getElementById("caption");
-    toastEl = document.getElementById("toast");
-    radar = document.getElementById("radar");
-    if (radar) {
-      ctx2 = radar.getContext("2d");
-      window.addEventListener("resize", resize);
-      resize();
-    }
     on(EVT.TOAST, ({ text }) => toast(text));
     on(EVT.ENTER_ROOM, ({ room }) => caption(room.name));
     on(EVT.MOVE, () => drawRadar());
@@ -4900,77 +4639,12 @@ body.touch .touchpad{display:block;}
       if (type === "start") toast("New quest");
     });
   }
-  function resize() {
-    if (!radar) return;
-    radar.width = window.innerWidth * devicePixelRatio;
-    radar.height = window.innerHeight * devicePixelRatio;
-    drawRadar();
-  }
   function caption(text, ms = 2200) {
-    if (!captionEl) return;
-    captionEl.textContent = text;
-    captionEl.style.opacity = "1";
-    clearTimeout(caption._t);
-    caption._t = setTimeout(() => {
-      captionEl.style.opacity = "0.6";
-    }, ms);
   }
   function toast(text, ms = 2200) {
-    if (!toastEl) return;
-    toastEl.textContent = text;
-    toastEl.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove("show"), ms);
+    say(text, { blip: "blip" });
   }
   function drawRadar() {
-    if (!ctx2) return;
-    const W = radar.width, H = radar.height;
-    ctx2.clearRect(0, 0, W, H);
-    const p = getPlayer();
-    const scale = Math.min(W, H) / 18;
-    const cx = W / 2, cy = H / 2;
-    ctx2.strokeStyle = "rgba(255,122,0,0.08)";
-    ctx2.lineWidth = 1;
-    for (let i = -10; i <= 10; i++) {
-      ctx2.beginPath();
-      ctx2.moveTo(cx + i * scale, 0);
-      ctx2.lineTo(cx + i * scale, H);
-      ctx2.stroke();
-      ctx2.beginPath();
-      ctx2.moveTo(0, cy + i * scale);
-      ctx2.lineTo(W, cy + i * scale);
-      ctx2.stroke();
-    }
-    Promise.resolve().then(() => (init_rooms(), rooms_exports)).then(({ ROOMS: ROOMS2 }) => {
-      for (const r of ROOMS2) {
-        const x = cx + (r.x - p.x) * scale;
-        const y = cy + (r.y - p.y) * scale;
-        ctx2.fillStyle = "rgba(255,170,80,0.07)";
-        ctx2.strokeStyle = "rgba(255,170,80,0.35)";
-        ctx2.fillRect(x, y, r.w * scale, r.h * scale);
-        ctx2.strokeRect(x, y, r.w * scale, r.h * scale);
-      }
-      Promise.resolve().then(() => (init_rooms(), rooms_exports)).then(({ OBJECTS: OBJECTS2 }) => {
-        for (const o of OBJECTS2) {
-          const x = cx + (o.x - p.x) * scale + scale / 2;
-          const y = cy + (o.y - p.y) * scale + scale / 2;
-          ctx2.fillStyle = o.type === "station" ? "#ff7a00" : o.type === "npc" ? "#ffd089" : o.type === "container" ? "#6ee07a" : "#888";
-          ctx2.beginPath();
-          ctx2.arc(x, y, scale * 0.22, 0, Math.PI * 2);
-          ctx2.fill();
-        }
-        ctx2.fillStyle = "#fff";
-        ctx2.beginPath();
-        ctx2.arc(cx, cy, scale * 0.3, 0, Math.PI * 2);
-        ctx2.fill();
-        const f = [[1, 0], [0, 1], [-1, 0], [0, -1]][p.facing];
-        ctx2.strokeStyle = "#fff";
-        ctx2.beginPath();
-        ctx2.moveTo(cx, cy);
-        ctx2.lineTo(cx + f[0] * scale * 1.2, cy + f[1] * scale * 1.2);
-        ctx2.stroke();
-      });
-    });
   }
 
   // src/ui/status.js
@@ -5496,7 +5170,7 @@ body.touch .touchpad{display:block;}
     drawRadar();
     if (!getFlag("hired")) {
       setFlag("hired", true);
-      say("Welcome to your first day at Cheetos Co. You are in the " + room.name + ". " + room.description + " Walk with the arrow keys, and press E to interact. Linda in HR wants to meet you.", { blip: "ding" });
+      say("Welcome to your first day at Cheetos Co. You are in the " + room.name + ". " + room.description + " Swipe in any direction to move. Single tap to interact. Swipe left to go back. Linda in HR wants to meet you.", { blip: "ding" });
     } else {
       say("Welcome back. You are in the " + room.name + ". " + questStatus(), { blip: "blip" });
     }
@@ -5562,8 +5236,14 @@ body.touch .touchpad{display:block;}
     onAction("right", () => doMove(0));
     onAction("down", () => doMove(1));
     onAction("left", () => doMove(2));
+    onAction("swipe-up", () => doMove(3));
+    onAction("swipe-right", () => doMove(0));
+    onAction("swipe-down", () => doMove(1));
+    onAction("swipe-left", () => doMove(2));
     onAction("interact", interact);
     onAction("actionA", interact);
+    onAction("tap", interact);
+    onAction("double-tap", interact);
     onAction("back", back2);
     onAction("scan", scanAround);
     onAction("look", scanAround);
@@ -5790,18 +5470,18 @@ body.touch .touchpad{display:block;}
       noSound: true
     });
     startTrack(TRACKS.lobby);
-    say("Welcome to Cheetos Company. Main menu. Use arrow keys to browse and Enter to select. On touch, tap an option.", { blip: "blip" });
+    say("Welcome to Cheetos Company. Swipe up and down to browse. Double-tap to select. Swipe left to go back.", { blip: "blip" });
   }
   function howToPlay() {
     openMenu({
       title: "How to Play",
       subtitle: "Put on headphones for stereo sound",
       items: [
-        { label: "Move: Arrow keys or WASD. On touch, use the D-pad or swipe." },
-        { label: "Interact: E, Enter, Space, or double-tap the screen." },
-        { label: "Scan room: Hold Shift or press Tab to hear nearby objects." },
-        { label: "Back / cancel: Escape or K." },
-        { label: "Menu / status: M or the menu button. Inventory: I." },
+        { label: "Move: Swipe in any direction, or use arrow keys." },
+        { label: "Interact: Single tap or press Enter." },
+        { label: "Scan room: Hold Tab or long-press the screen." },
+        { label: "Back: Swipe left, or press Escape." },
+        { label: "Menu: Press M. Inventory: Press I." },
         { label: "Sounds come from the direction of their source. Turn to face them!" },
         { label: "Walk into a station to craft. Walk into a person to talk. Face crates to loot." },
         { label: "Your progress saves automatically every 15 seconds." },
@@ -5822,15 +5502,14 @@ body.touch .touchpad{display:block;}
     try {
       await boot();
       booted_ok = true;
+      if (gate) gate.classList.add("hidden");
       document.removeEventListener("touchstart", kick);
       document.removeEventListener("click", kick);
       window.removeEventListener("keydown", kick);
     } catch (err) {
       console.error("Boot failed:", err);
       booting = false;
-      if (gate) {
-        gate.innerHTML = '<div class="gate-card"><h1>ERROR</h1><p class="hint">' + (err.message || "Something went wrong") + '</p><p class="hint">Tap to retry</p></div>';
-      }
+      say("Error starting game: " + (err.message || "Unknown error") + ". Please try again.", { interrupt: true });
     }
   }
   document.addEventListener("touchstart", kick, { passive: false });
