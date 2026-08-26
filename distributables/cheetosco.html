@@ -237,12 +237,19 @@ body.touch .touchpad{display:block;}
   // src/audio/context.js
   async function initAudio() {
     if (ctx) {
-      if (ctx.state === "suspended") await ctx.resume();
+      if (ctx.state === "suspended") {
+        await Promise.race([ctx.resume(), new Promise((_, rej) => setTimeout(() => rej(new Error("AudioContext resume timeout")), 2e3))]).catch(() => {
+        });
+      }
       return ctx;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error("AudioContext not supported in this browser");
     ctx = new AC();
-    if (ctx.state === "suspended") await ctx.resume();
+    if (ctx.state === "suspended") {
+      await Promise.race([ctx.resume(), new Promise((_, rej) => setTimeout(() => rej(new Error("AudioContext resume timeout")), 2e3))]).catch(() => {
+      });
+    }
     compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -14;
     compressor.knee.value = 24;
@@ -750,6 +757,22 @@ body.touch .touchpad{display:block;}
   });
 
   // src/audio/speech.js
+  function initVoices() {
+    if (!("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    function load() {
+      voicesLoaded = true;
+      if (queue.length) pump();
+    }
+    if (synth.getVoices().length > 0) {
+      voicesLoaded = true;
+    } else {
+      synth.addEventListener("voiceschanged", load, { once: true });
+      setTimeout(() => {
+        if (!voicesLoaded) voicesLoaded = true;
+      }, 1e3);
+    }
+  }
   function configureSpeech(c) {
     cfg = { ...cfg, ...c };
   }
@@ -774,16 +797,29 @@ body.touch .touchpad{display:block;}
         resolve();
         return;
       }
+      const synth = window.speechSynthesis;
+      if (synth.paused) synth.resume();
+      if (synth.pending) synth.cancel();
       const u = new SpeechSynthesisUtterance(text);
       const voice = pickVoice(opts.voiceURI || cfg.voiceURI);
       if (voice) u.voice = voice;
       u.rate = opts.rate ?? cfg.rate;
       u.pitch = opts.pitch ?? cfg.pitch;
       u.volume = opts.volume ?? cfg.volume;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
+      let done = false;
+      const finish = () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      };
+      u.onend = finish;
+      u.onerror = finish;
+      const chars = text.length;
+      const maxMs = Math.max(8e3, chars * 120);
+      const timer2 = setTimeout(finish, maxMs);
       currentUtter = u;
-      window.speechSynthesis.speak(u);
+      synth.speak(u);
     });
   }
   function say(text, opts = {}) {
@@ -830,7 +866,7 @@ body.touch .touchpad{display:block;}
       }, 30);
     }
   }
-  var queue, currentUtter, muted, preBlip, cfg, pumping;
+  var queue, currentUtter, muted, preBlip, cfg, voicesLoaded, pumping;
   var init_speech = __esm({
     "src/audio/speech.js"() {
       init_context();
@@ -841,6 +877,8 @@ body.touch .touchpad{display:block;}
       muted = false;
       preBlip = true;
       cfg = { rate: 1, pitch: 1, volume: 1, voiceURI: null };
+      voicesLoaded = false;
+      if ("speechSynthesis" in window) initVoices();
       pumping = false;
     }
   });
@@ -5529,12 +5567,30 @@ body.touch .touchpad{display:block;}
     });
   }
   var gate = document.getElementById("gate");
-  var kick = async () => {
-    await boot();
-  };
-  gate.addEventListener("click", kick);
+  var booting = false;
+  async function kick(e) {
+    if (booting) return;
+    booting = true;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    try {
+      await boot();
+    } catch (err) {
+      console.error("Boot failed:", err);
+      const hint = document.getElementById("gate");
+      if (hint) {
+        hint.innerHTML = `<div class="gate-card"><h1>ERROR</h1><p class="hint">${err.message}</p><p class="hint">Tap to retry</p></div>`;
+        booting = false;
+      }
+    }
+  }
+  if (gate) {
+    gate.addEventListener("touchstart", kick, { once: true, passive: false });
+    gate.addEventListener("click", kick, { once: true });
+  }
   window.addEventListener("keydown", kick, { once: true });
-  window.addEventListener("touchstart", kick, { once: true, passive: true });
 })();
 
 </script>
