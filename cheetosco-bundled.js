@@ -1,0 +1,5403 @@
+(() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __esm = (fn, res) => function __init() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
+  // src/audio/context.js
+  async function initAudio() {
+    if (ctx) {
+      if (ctx.state === "suspended") {
+        await Promise.race([ctx.resume(), new Promise((_, rej) => setTimeout(() => rej(new Error("AudioContext resume timeout")), 2e3))]).catch(() => {
+        });
+      }
+      return ctx;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error("AudioContext not supported in this browser");
+    ctx = new AC();
+    if (ctx.state === "suspended") {
+      await Promise.race([ctx.resume(), new Promise((_, rej) => setTimeout(() => rej(new Error("AudioContext resume timeout")), 2e3))]).catch(() => {
+      });
+    }
+    compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -14;
+    compressor.knee.value = 24;
+    compressor.ratio.value = 6;
+    compressor.attack.value = 4e-3;
+    compressor.release.value = 0.25;
+    masterGain = ctx.createGain();
+    masterGain.gain.value = 0.9;
+    sfxBus = ctx.createGain();
+    sfxBus.gain.value = 1;
+    speechBus = ctx.createGain();
+    speechBus.gain.value = 1;
+    musicBus = ctx.createGain();
+    musicBus.gain.value = 0.55;
+    const conv = ctx.createConvolver();
+    conv.buffer = buildImpulse(2.2, 2.5);
+    reverbSend = ctx.createGain();
+    reverbSend.gain.value = 0.35;
+    reverbWet = ctx.createGain();
+    reverbWet.gain.value = 0.28;
+    const dry = ctx.createGain();
+    dry.gain.value = 1;
+    sfxBus.connect(dry);
+    sfxBus.connect(reverbSend);
+    reverbSend.connect(conv);
+    conv.connect(reverbWet);
+    dry.connect(compressor);
+    reverbWet.connect(compressor);
+    speechBus.connect(compressor);
+    musicBus.connect(compressor);
+    compressor.connect(masterGain);
+    masterGain.connect(ctx.destination);
+    noiseBuffer = buildNoiseBuffer(2);
+    return ctx;
+  }
+  function ac() {
+    return ctx;
+  }
+  function getSfxBus() {
+    return sfxBus;
+  }
+  function getSpeechBus() {
+    return speechBus;
+  }
+  function getMusicBus() {
+    return musicBus;
+  }
+  function getNoiseBuffer() {
+    return noiseBuffer;
+  }
+  function setMasterVolume(v) {
+    if (masterGain) masterGain.gain.value = v;
+  }
+  function setSpeechVolume(v) {
+    if (speechBus) speechBus.gain.value = v;
+  }
+  function buildNoiseBuffer(seconds) {
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+  function buildImpulse(seconds, decay) {
+    const rate = ctx.sampleRate;
+    const len = Math.floor(rate * seconds);
+    const impulse = ctx.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = impulse.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      }
+    }
+    return impulse;
+  }
+  var ctx, masterGain, sfxBus, speechBus, musicBus, compressor, reverbSend, reverbWet, noiseBuffer;
+  var init_context = __esm({
+    "src/audio/context.js"() {
+      ctx = null;
+      noiseBuffer = null;
+    }
+  });
+
+  // src/core/input.js
+  function initInput() {
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: false });
+    document.addEventListener("keydown", handleKeyDown);
+  }
+  function handleTouchStart(e) {
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
+  }
+  function handleTouchEnd(e) {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const deltaTime = Date.now() - touchStartTime;
+    if (Math.abs(deltaX) > SWIPE_THRESHOLD || Math.abs(deltaY) > SWIPE_THRESHOLD) {
+      if (tapTimeout) {
+        clearTimeout(tapTimeout);
+        tapTimeout = null;
+      }
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        if (deltaX > 0) {
+          fire("swipe-right");
+        } else {
+          fire("swipe-left");
+        }
+      } else {
+        if (deltaY > 0) {
+          fire("swipe-down");
+        } else {
+          fire("swipe-up");
+        }
+      }
+      return;
+    }
+    const currentTime = Date.now();
+    if (currentTime - lastTapTime < DOUBLE_TAP_DELAY) {
+      if (tapTimeout) {
+        clearTimeout(tapTimeout);
+        tapTimeout = null;
+      }
+      fire("double-tap");
+      lastTapTime = 0;
+    } else {
+      lastTapTime = currentTime;
+      tapTimeout = setTimeout(() => {
+        fire("tap");
+        tapTimeout = null;
+      }, DOUBLE_TAP_DELAY);
+    }
+  }
+  function handleKeyDown(e) {
+    switch (e.code) {
+      case "ArrowUp":
+      case "KeyW":
+        e.preventDefault();
+        fire("up");
+        break;
+      case "ArrowDown":
+      case "KeyS":
+        e.preventDefault();
+        fire("down");
+        break;
+      case "ArrowLeft":
+      case "KeyA":
+        e.preventDefault();
+        fire("left");
+        break;
+      case "ArrowRight":
+      case "KeyD":
+        e.preventDefault();
+        fire("right");
+        break;
+      case "Space":
+      case "Enter":
+        e.preventDefault();
+        fire("interact");
+        break;
+      case "Escape":
+      case "Backspace":
+        e.preventDefault();
+        fire("back");
+        break;
+      case "Tab":
+        e.preventDefault();
+        fire("scan");
+        break;
+      case "KeyI":
+        e.preventDefault();
+        fire("inventory");
+        break;
+      case "KeyM":
+        e.preventDefault();
+        fire("menu");
+        break;
+    }
+  }
+  function onAction(action, fn) {
+    if (!handlers.has(action)) handlers.set(action, /* @__PURE__ */ new Set());
+    handlers.get(action).add(fn);
+    return () => handlers.get(action)?.delete(fn);
+  }
+  function fire(action) {
+    const set = handlers.get(action);
+    if (!set) return;
+    for (const fn of set) {
+      try {
+        fn(action);
+      } catch (e) {
+        console.error(`Action handler error for '${action}':`, e);
+      }
+    }
+  }
+  function clearActions() {
+    handlers.clear();
+  }
+  var handlers, SWIPE_THRESHOLD, DOUBLE_TAP_DELAY, lastTapTime, touchStartX, touchStartY, touchStartTime, tapTimeout;
+  var init_input = __esm({
+    "src/core/input.js"() {
+      handlers = /* @__PURE__ */ new Map();
+      SWIPE_THRESHOLD = 40;
+      DOUBLE_TAP_DELAY = 350;
+      lastTapTime = 0;
+      touchStartX = 0;
+      touchStartY = 0;
+      touchStartTime = 0;
+      tapTimeout = null;
+    }
+  });
+
+  // src/audio/synth.js
+  function rnd(min, max, rng = Math.random) {
+    if (min == null) return max;
+    if (typeof min === "object") {
+      max = min.max;
+      min = min.min;
+    }
+    return min + rng() * (max - min);
+  }
+  function pick(v, rng) {
+    if (v == null) return v;
+    if (typeof v === "object" && "min" in v) return rnd(v, void 0, rng);
+    return v;
+  }
+  function playSound(sound, opts = {}) {
+    const audio = ac();
+    if (!audio || !sound) return null;
+    const when = opts.when ?? audio.currentTime + (opts.delay ?? 0);
+    const rng = opts.rng ?? Math.random;
+    const out = opts.out;
+    const voices = Array.isArray(sound) ? sound : sound.voices || [sound];
+    const handles = [];
+    for (const v0 of voices) {
+      let v = v0;
+      if (v0.variants) v = { ...v0, ...v0.variants[Math.floor(rng() * v0.variants.length)] };
+      handles.push(playVoice(v, when, rng, out));
+    }
+    return { startTime: when };
+  }
+  function playVoice(v, when, rng, out) {
+    const audio = ac();
+    const dur = pick(v.dur, rng);
+    const start = when + (v.delay || 0);
+    const end = start + dur;
+    let source;
+    let sourceOut;
+    const sourceNodes = [];
+    if (v.source === "noise" || v.source === "crunch") {
+      source = audio.createBufferSource();
+      source.buffer = getNoiseBuffer();
+      source.loop = true;
+      if (v.source === "crunch") {
+        source.playbackRate.value = rnd(0.7, 1.4, rng);
+      }
+      sourceOut = audio.createGain();
+      sourceOut.gain.value = v.source === "crunch" ? 0.5 : 1;
+      source.connect(sourceOut);
+      sourceNodes.push(source, sourceOut);
+    } else {
+      source = audio.createOscillator();
+      source.type = v.type || "sine";
+      let f = pick(v.freq ?? 440, rng);
+      if (v.note != null) f = noteToFreq(v.note) * (v.noteMul || 1);
+      source.frequency.setValueAtTime(f, start);
+      if (v.freq2 != null) {
+        source.frequency.exponentialRampToValueAtTime(
+          Math.max(1, pick(v.freq2, rng)),
+          start + dur * (v.sweep ?? 1)
+        );
+      }
+      if (v.mid != null) {
+        const m = pick(v.mid, rng);
+        source.frequency.exponentialRampToValueAtTime(Math.max(1, m), start + dur * 0.4);
+        source.frequency.exponentialRampToValueAtTime(Math.max(1, pick(v.freq2 ?? f, rng)), start + dur);
+      }
+      if (v.detune) source.detune.value = rnd(-v.detune, v.detune, rng);
+      sourceOut = source;
+      sourceNodes.push(source);
+    }
+    let chain = sourceOut;
+    if (v.filter) {
+      const f = audio.createBiquadFilter();
+      f.type = v.filter.type || "lowpass";
+      f.frequency.setValueAtTime(pick(v.filter.freq ?? 5e3, rng), start);
+      f.Q.value = pick(v.filter.q ?? 1, rng);
+      if (v.filter.freq2 != null) {
+        f.frequency.exponentialRampToValueAtTime(
+          Math.max(40, pick(v.filter.freq2, rng)),
+          start + dur * (v.filter.sweep ?? 1)
+        );
+      }
+      chain.connect(f);
+      chain = f;
+    }
+    if (v.source === "crunch") {
+      const cg = audio.createGain();
+      cg.gain.value = 0;
+      chain.connect(cg);
+      chain = cg;
+      const steps = Math.max(3, Math.floor(dur * 70));
+      for (let i = 0; i < steps; i++) {
+        const t = start + i / steps * dur;
+        const g = Math.pow(rng(), 2.2) * 0.9;
+        cg.gain.setValueAtTime(g, t);
+        cg.gain.linearRampToValueAtTime(g * 0.2, t + dur / steps * 0.8);
+      }
+    }
+    if (v.vibrato && source.frequency) {
+      const lfo = audio.createOscillator();
+      const lfoGain = audio.createGain();
+      lfo.frequency.value = pick(v.vibrato.rate ?? 5, rng);
+      lfoGain.gain.value = pick(v.vibrato.depth ?? 6, rng);
+      lfo.connect(lfoGain);
+      lfoGain.connect(source.frequency);
+      if (v.vibrato.delay) lfoGain.gain.setValueAtTime(0, start);
+      if (v.vibrato.delay) lfoGain.gain.linearRampToValueAtTime(pick(v.vibrato.depth ?? 6, rng), start + v.vibrato.delay);
+      lfo.start(start);
+      lfo.stop(end + 0.05);
+    }
+    let tremNode = null;
+    if (v.tremolo) {
+      const tl = audio.createOscillator();
+      const tg = audio.createGain();
+      tg.gain.value = 1 - pick(v.tremolo.depth ?? 0.3, rng);
+      tl.frequency.value = pick(v.tremolo.rate ?? 6, rng);
+      const depth = audio.createGain();
+      depth.gain.value = pick(v.tremolo.depth ?? 0.3, rng);
+      tl.connect(depth);
+      depth.connect(tg.gain);
+      chain.connect(tg);
+      chain = tg;
+      tremNode = { tl, tg, depth };
+      if (v.tremolo.attack) {
+        tg.gain.setValueAtTime(1, start);
+        tg.gain.linearRampToValueAtTime(1 - depth.gain.value, start + v.tremolo.attack);
+      }
+    }
+    const voiceGain = audio.createGain();
+    voiceGain.gain.value = 0;
+    const vol = pick(v.vol ?? 0.3, rng);
+    const a = v.attack ?? Math.min(0.01, dur * 0.1);
+    const d = v.decay ?? Math.min(0.08, dur * 0.2);
+    const s = v.sustain ?? 0.7;
+    const r = v.release ?? Math.min(0.12, dur * 0.3);
+    voiceGain.gain.setValueAtTime(0, start);
+    voiceGain.gain.linearRampToValueAtTime(vol, start + a);
+    voiceGain.gain.linearRampToValueAtTime(vol * s, start + a + d);
+    if (dur > a + d) voiceGain.gain.setValueAtTime(vol * s, end - r);
+    voiceGain.gain.linearRampToValueAtTime(1e-4, end);
+    chain.connect(voiceGain);
+    let finalNode = voiceGain;
+    if (v.pan != null) {
+      const panner = makePanner(pick(v.pan, rng));
+      voiceGain.connect(panner);
+      finalNode = panner;
+    }
+    if (out) finalNode.connect(out);
+    source.start(start);
+    source.stop(end + 0.05);
+    return { stop(t) {
+      try {
+        source.stop(t);
+      } catch (e) {
+      }
+    } };
+  }
+  function makePanner(pos = 0) {
+    const audio = ac();
+    if (audio.createStereoPanner) {
+      const p = audio.createStereoPanner();
+      p.pan.value = pos;
+      return p;
+    }
+    const merger = audio.createChannelMerger(2);
+    const left = audio.createGain();
+    const right = audio.createGain();
+    const setPan = (x) => {
+      left.gain.value = Math.cos((x + 1) * Math.PI / 4);
+      right.gain.value = Math.sin((x + 1) * Math.PI / 4);
+    };
+    setPan(pos);
+    merger.connect = /* @__PURE__ */ ((orig) => function(dest) {
+      orig.call(merger, dest, 0);
+      if (dest) orig.call(merger, dest, 1);
+    })(merger.connect);
+    const node = audio.createGain();
+    node.connect(left);
+    node.connect(right);
+    left.connect(merger, 0, 0);
+    right.connect(merger, 0, 1);
+    merger._setPan = setPan;
+    return merger;
+  }
+  function noteToFreq(note) {
+    const m = /^([A-G]#?)(-?\d+)$/.exec(note);
+    if (!m) return 440;
+    const semi = NOTE[m[1]] + (parseInt(m[2], 10) - 4) * 12;
+    return 440 * Math.pow(2, semi / 12);
+  }
+  var NOTE;
+  var init_synth = __esm({
+    "src/audio/synth.js"() {
+      init_context();
+      NOTE = { C: -9, "C#": -8, D: -7, "D#": -6, E: -5, F: -4, "F#": -3, G: -2, "G#": -1, A: 0, "A#": 1, B: 2 };
+    }
+  });
+
+  // src/data/sounds.js
+  var osc, noise, crunch, tone, SOUNDS, SURFACE_SOUNDS;
+  var init_sounds = __esm({
+    "src/data/sounds.js"() {
+      osc = (o) => ({ source: "osc", vol: 0.3, ...o });
+      noise = (o) => ({ source: "noise", vol: 0.2, ...o });
+      crunch = (o) => ({ source: "crunch", vol: 0.4, ...o });
+      tone = (freq, dur, o = {}) => osc({ freq, dur, type: "sine", vol: 0.28, ...o });
+      SOUNDS = {
+        // ---- UI ----
+        blip: [
+          // Soft glass tap with shimmer tail
+          tone(1200, 0.04, { vol: 0.15, attack: 1e-3, release: 0.03, type: "sine" }),
+          tone(1800, 0.06, { vol: 0.06, delay: 5e-3, attack: 1e-3, release: 0.05 }),
+          tone(2400, 0.08, { vol: 0.03, delay: 0.01, type: "sine", release: 0.07 })
+        ],
+        focus: [
+          // Crystalline upward sweep — like a tiny chime
+          osc({
+            freq: 660,
+            freq2: 1320,
+            dur: 0.1,
+            type: "sine",
+            vol: 0.14,
+            attack: 2e-3,
+            release: 0.08,
+            sweep: 0.3
+          }),
+          osc({
+            freq: 1980,
+            freq2: 2640,
+            dur: 0.12,
+            type: "sine",
+            vol: 0.05,
+            delay: 0.01,
+            attack: 3e-3,
+            release: 0.1,
+            sweep: 0.4
+          }),
+          osc({
+            freq: 3960,
+            dur: 0.06,
+            type: "sine",
+            vol: 0.02,
+            delay: 0.03,
+            attack: 1e-3,
+            release: 0.05
+          })
+        ],
+        select: [
+          // Confident dual-tone click with harmonic sparkle
+          osc({ freq: 523, dur: 0.06, type: "triangle", vol: 0.22, attack: 2e-3, release: 0.04 }),
+          osc({ freq: 784, dur: 0.08, type: "sine", vol: 0.18, delay: 0.035, attack: 2e-3, release: 0.06 }),
+          osc({ freq: 1568, dur: 0.06, type: "sine", vol: 0.06, delay: 0.05, attack: 1e-3, release: 0.05 }),
+          osc({ freq: 1047, dur: 0.12, type: "sine", vol: 0.04, delay: 0.04, release: 0.1 })
+        ],
+        back: [
+          // Descending glass slide — like a key release
+          osc({
+            freq: 880,
+            freq2: 440,
+            dur: 0.12,
+            type: "sine",
+            vol: 0.18,
+            attack: 2e-3,
+            release: 0.1,
+            sweep: 0.7
+          }),
+          osc({
+            freq: 1320,
+            freq2: 660,
+            dur: 0.1,
+            type: "sine",
+            vol: 0.05,
+            delay: 0.01,
+            attack: 2e-3,
+            release: 0.08,
+            sweep: 0.6
+          })
+        ],
+        error: [
+          // Low buzz with metallic edge
+          osc({
+            freq: 200,
+            freq2: 140,
+            dur: 0.22,
+            type: "sawtooth",
+            vol: 0.16,
+            filter: { type: "lowpass", freq: 900, q: 5 }
+          }),
+          osc({
+            freq: 300,
+            freq2: 180,
+            dur: 0.18,
+            type: "square",
+            vol: 0.04,
+            delay: 0.04,
+            filter: { type: "bandpass", freq: 600, q: 3 }
+          }),
+          noise({ dur: 0.06, vol: 0.04, filter: { type: "bandpass", freq: 400 } })
+        ],
+        success: [
+          tone(523, 0.1, { vol: 0.2 }),
+          tone(659, 0.1, { vol: 0.2, delay: 0.09 }),
+          tone(784, 0.16, { vol: 0.22, delay: 0.18, release: 0.12 })
+        ],
+        coin: [
+          tone(988, 0.05, { vol: 0.22 }),
+          tone(1319, 0.16, { vol: 0.2, delay: 0.045, release: 0.12 })
+        ],
+        cash: [
+          tone(1568, 0.05, { vol: 0.18 }),
+          tone(2093, 0.06, { vol: 0.16, delay: 0.05 }),
+          noise({ dur: 0.18, vol: 0.12, filter: { type: "bandpass", freq: 4e3, q: 2 }, delay: 0.06 })
+        ],
+        levelup: [
+          tone(392, 0.12, { vol: 0.22 }),
+          tone(523, 0.12, { vol: 0.22, delay: 0.1 }),
+          tone(659, 0.12, { vol: 0.22, delay: 0.2 }),
+          tone(784, 0.12, { vol: 0.22, delay: 0.3 }),
+          tone(1047, 0.28, { vol: 0.24, delay: 0.4, release: 0.2 })
+        ],
+        // ---- Footsteps (varied per surface) ----
+        step_hard: [
+          noise({ dur: { min: 0.05, max: 0.09 }, vol: 0.14, filter: { type: "lowpass", freq: { min: 600, max: 1100 } } }),
+          osc({ freq: { min: 90, max: 130 }, dur: 0.05, type: "sine", vol: 0.1, filter: { type: "lowpass", freq: 300 } })
+        ],
+        step_tile: [
+          noise({ dur: { min: 0.04, max: 0.07 }, vol: 0.11, filter: { type: "bandpass", freq: { min: 1400, max: 2200 }, q: 3 } })
+        ],
+        step_carpet: [
+          noise({ dur: { min: 0.06, max: 0.1 }, vol: 0.07, filter: { type: "lowpass", freq: { min: 400, max: 700 } } })
+        ],
+        // ---- Doors ----
+        door_open: [
+          noise({ dur: 0.12, vol: 0.1, filter: { type: "bandpass", freq: 900, q: 3, freq2: 300, sweep: 0.9 } }),
+          osc({ freq: 220, freq2: 140, dur: 0.2, type: "sawtooth", vol: 0.07, filter: { type: "lowpass", freq: 700 } })
+        ],
+        door_close: [
+          osc({ freq: 140, dur: 0.1, type: "sine", vol: 0.16 }),
+          noise({ dur: 0.06, vol: 0.1, filter: { type: "lowpass", freq: 500 } })
+        ],
+        door_locked: [
+          osc({ freq: 300, dur: 0.06, type: "square", vol: 0.1, filter: { type: "lowpass", freq: 900 } }),
+          osc({ freq: 220, dur: 0.08, type: "square", vol: 0.1, delay: 0.07, filter: { type: "lowpass", freq: 900 } })
+        ],
+        elevator: [
+          osc({ freq: 80, freq2: 65, dur: 0.9, type: "sine", vol: 0.12 }),
+          tone(880, 0.08, { vol: 0.14, delay: 0.9 }),
+          tone(660, 0.1, { vol: 0.14, delay: 0.98 })
+        ],
+        // ---- Crunchy manufacturing ----
+        crunch: [
+          crunch({ dur: { min: 0.12, max: 0.22 }, vol: 0.3, filter: { type: "bandpass", freq: { min: 1800, max: 3200 }, q: 1.2 } })
+        ],
+        crunch_big: [
+          crunch({ dur: { min: 0.2, max: 0.35 }, vol: 0.35, filter: { type: "bandpass", freq: { min: 1200, max: 2600 }, q: 0.8 } }),
+          noise({ dur: 0.05, vol: 0.08, filter: { type: "highpass", freq: 3e3 } })
+        ],
+        machine_hum: [
+          osc({ freq: 60, dur: 0.9, type: "sawtooth", vol: 0.05, filter: { type: "lowpass", freq: 220 } }),
+          osc({ freq: 120, dur: 0.9, type: "sine", vol: 0.04 })
+        ],
+        conveyor: [
+          noise({ dur: 0.8, vol: 0.07, filter: { type: "lowpass", freq: 600 }, tremolo: { rate: 7, depth: 0.25 } }),
+          osc({ freq: 70, dur: 0.8, type: "square", vol: 0.025, filter: { type: "lowpass", freq: 200 } })
+        ],
+        fryer: [
+          noise({ dur: 1.2, vol: 0.12, filter: { type: "bandpass", freq: 2500, q: 0.6 }, tremolo: { rate: 14, depth: 0.4 } }),
+          noise({ dur: 1.2, vol: 0.05, filter: { type: "highpass", freq: 5e3 } })
+        ],
+        pack: [
+          osc({ freq: 600, freq2: 250, dur: 0.14, type: "triangle", vol: 0.18 }),
+          noise({ dur: 0.1, vol: 0.12, filter: { type: "bandpass", freq: 1800, q: 2 } })
+        ],
+        beep_machine: [
+          tone(1200, 0.07, { vol: 0.16 }),
+          tone(1200, 0.07, { vol: 0.16, delay: 0.16 })
+        ],
+        ding: [
+          tone(1047, 0.4, { vol: 0.22, release: 0.35 }),
+          osc({ freq: 2093, dur: 0.5, type: "sine", vol: 0.08, attack: 0.01, release: 0.4 })
+        ],
+        // ---- Social / NPC ----
+        npc_chatter: [
+          osc({ freq: 220, mid: 180, freq2: 240, dur: 0.25, type: "sawtooth", vol: 0.06, filter: { type: "lowpass", freq: 1100 }, vibrato: { rate: 5, depth: 8 } }),
+          osc({ freq: 330, mid: 260, freq2: 340, dur: 0.22, type: "triangle", vol: 0.04, filter: { type: "lowpass", freq: 900 }, delay: 0.12 })
+        ],
+        npc_hello: [
+          osc({ freq: 330, freq2: 440, dur: 0.12, type: "triangle", vol: 0.14 }),
+          osc({ freq: 440, dur: 0.14, type: "triangle", vol: 0.12, delay: 0.1 })
+        ],
+        phone: [
+          tone(520, 0.15, { vol: 0.18 }),
+          tone(660, 0.15, { vol: 0.18, delay: 0.16 })
+        ],
+        // ---- World ambience ----
+        ac_hum: [
+          osc({ freq: 50, dur: 2, type: "sine", vol: 0.03 }),
+          noise({ dur: 2, vol: 0.015, filter: { type: "lowpass", freq: 200 } })
+        ],
+        cafeteria: [
+          noise({ dur: 1.6, vol: 0.06, filter: { type: "bandpass", freq: 700, q: 0.4 } }),
+          osc({ freq: 200, dur: 0.3, type: "sawtooth", vol: 0.02, filter: { type: "lowpass", freq: 800 }, delay: 0.3 }),
+          osc({ freq: 260, dur: 0.25, type: "sawtooth", vol: 0.02, filter: { type: "lowpass", freq: 900 }, delay: 0.9 })
+        ],
+        outside_traffic: [
+          noise({ dur: 2, vol: 0.07, filter: { type: "lowpass", freq: 400 }, tremolo: { rate: 0.5, depth: 0.4 } })
+        ],
+        clock_tick: [
+          osc({ freq: 1800, dur: 0.03, type: "square", vol: 0.08 })
+        ],
+        // ---- Pickup / inventory ----
+        pickup: [
+          noise({ dur: 0.08, vol: 0.1, filter: { type: "highpass", freq: 2e3 } }),
+          tone(660, 0.05, { vol: 0.12 })
+        ],
+        drop: [
+          osc({ freq: 220, freq2: 110, dur: 0.12, type: "sine", vol: 0.18 }),
+          noise({ dur: 0.05, vol: 0.07, filter: { type: "lowpass", freq: 600 } })
+        ],
+        // ---- Test speakers ----
+        test_left: [
+          osc({ freq: 440, dur: 0.5, type: "sine", vol: 0.25, pan: -0.9, vibrato: { rate: 5, depth: 10 } })
+        ],
+        test_right: [
+          osc({ freq: 440, dur: 0.5, type: "sine", vol: 0.25, pan: 0.9, vibrato: { rate: 5, depth: 10 } })
+        ],
+        test_center: [
+          osc({ freq: 440, dur: 0.5, type: "sine", vol: 0.25, pan: 0, vibrato: { rate: 5, depth: 10 } })
+        ],
+        // ---- Negative / positive ----
+        negative: [
+          osc({ freq: 160, dur: 0.18, type: "sawtooth", vol: 0.16, filter: { type: "lowpass", freq: 700 } })
+        ],
+        positive: [
+          tone(659, 0.1, { vol: 0.2 }),
+          tone(880, 0.14, { vol: 0.2, delay: 0.09 })
+        ]
+      };
+      SURFACE_SOUNDS = {
+        hard: "step_hard",
+        tile: "step_tile",
+        carpet: "step_carpet"
+      };
+    }
+  });
+
+  // src/audio/speech.js
+  function initVoices() {
+    if (!("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    function load() {
+      voicesLoaded = true;
+      if (queue.length) pump();
+    }
+    if (synth.getVoices().length > 0) {
+      voicesLoaded = true;
+    } else {
+      synth.addEventListener("voiceschanged", load, { once: true });
+      setTimeout(() => {
+        if (!voicesLoaded) voicesLoaded = true;
+      }, 1e3);
+    }
+  }
+  function configureSpeech(c) {
+    cfg = { ...cfg, ...c };
+  }
+  function setPreBlip(b) {
+    preBlip = b;
+  }
+  function availableVoices() {
+    if (!("speechSynthesis" in window)) return [];
+    return window.speechSynthesis.getVoices();
+  }
+  function pickVoice(uri) {
+    const voices = availableVoices();
+    if (uri) {
+      const v = voices.find((x) => x.voiceURI === uri || x.name === uri);
+      if (v) return v;
+    }
+    return voices.find((v) => /en[-_]/i.test(v.lang) && /natural|google|samantha|daniel|karen|microsoft/i.test(v.name)) || voices.find((v) => /en[-_]/i.test(v.lang)) || voices[0] || null;
+  }
+  function speakNow(text, opts = {}) {
+    return new Promise((resolve) => {
+      if (muted || !text || !("speechSynthesis" in window)) {
+        resolve();
+        return;
+      }
+      const synth = window.speechSynthesis;
+      if (synth.paused) synth.resume();
+      if (synth.pending) synth.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const voice = pickVoice(opts.voiceURI || cfg.voiceURI);
+      if (voice) u.voice = voice;
+      u.rate = opts.rate ?? cfg.rate;
+      u.pitch = opts.pitch ?? cfg.pitch;
+      u.volume = opts.volume ?? cfg.volume;
+      let done = false;
+      const finish = () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      };
+      u.onend = finish;
+      u.onerror = finish;
+      const chars = text.length;
+      const maxMs = Math.max(8e3, chars * 120);
+      const timer2 = setTimeout(finish, maxMs);
+      currentUtter = u;
+      synth.speak(u);
+    });
+  }
+  function say(text, opts = {}) {
+    if (!text) return Promise.resolve();
+    if (opts.interrupt) cancelSpeech();
+    return new Promise((resolve) => {
+      queue.push({ text, opts, resolve });
+      pump();
+    });
+  }
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    while (queue.length) {
+      const { text, opts, resolve } = queue.shift();
+      if (preBlip && opts.blip !== false) {
+        const key = typeof opts.blip === "string" ? opts.blip : "blip";
+        if (SOUNDS[key]) playSound(SOUNDS[key], { out: getSpeechBus() });
+      }
+      try {
+        await speakNow(text, opts);
+      } catch (e) {
+      }
+      resolve && resolve();
+    }
+    pumping = false;
+  }
+  function cancelSpeech() {
+    queue = [];
+    if ("speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {
+      }
+    }
+    currentUtter = null;
+  }
+  function live(text, assertive = false) {
+    const el = document.getElementById(assertive ? "live-assertive" : "live");
+    if (el) {
+      el.textContent = "";
+      setTimeout(() => {
+        el.textContent = text;
+      }, 30);
+    }
+  }
+  var queue, currentUtter, muted, preBlip, cfg, voicesLoaded, pumping;
+  var init_speech = __esm({
+    "src/audio/speech.js"() {
+      init_context();
+      init_synth();
+      init_sounds();
+      queue = [];
+      currentUtter = null;
+      muted = false;
+      preBlip = true;
+      cfg = { rate: 1, pitch: 1, volume: 1, voiceURI: null };
+      voicesLoaded = false;
+      if ("speechSynthesis" in window) initVoices();
+      pumping = false;
+    }
+  });
+
+  // src/core/events.js
+  var events_exports = {};
+  __export(events_exports, {
+    EVT: () => EVT,
+    emit: () => emit,
+    off: () => off,
+    on: () => on
+  });
+  function on(event, fn) {
+    if (!listeners.has(event)) listeners.set(event, /* @__PURE__ */ new Set());
+    listeners.get(event).add(fn);
+    return () => off(event, fn);
+  }
+  function off(event, fn) {
+    listeners.get(event)?.delete(fn);
+  }
+  function emit(event, payload) {
+    const set = listeners.get(event);
+    if (!set) return;
+    for (const fn of set) {
+      try {
+        fn(payload);
+      } catch (e) {
+        console.error(event, e);
+      }
+    }
+  }
+  var listeners, EVT;
+  var init_events = __esm({
+    "src/core/events.js"() {
+      listeners = /* @__PURE__ */ new Map();
+      EVT = {
+        MOVE: "move",
+        ENTER_ROOM: "enter_room",
+        INTERACT: "interact",
+        DIALOGUE: "dialogue",
+        CRAFT_START: "craft_start",
+        CRAFT_DONE: "craft_done",
+        INVENTORY: "inventory",
+        MONEY: "money",
+        XP: "xp",
+        LEVEL: "level",
+        SELL: "sell",
+        COLLECT: "collect",
+        QUEST: "quest",
+        TOAST: "toast",
+        SPEAK: "speak",
+        STATE: "state"
+      };
+    }
+  });
+
+  // src/data/rooms.js
+  var ROOMS, WORLD, DOORS, OBJECTS, START;
+  var init_rooms = __esm({
+    "src/data/rooms.js"() {
+      ROOMS = [
+        // Left column
+        {
+          id: "hr",
+          name: "Human Resources",
+          x: 2,
+          y: 6,
+          w: 8,
+          h: 8,
+          surface: "carpet",
+          track: "calm",
+          ambience: "ac_hum",
+          description: "Human resources. Soft carpets muffle your footsteps. Linda hires you; Patel handles staff and benefits."
+        },
+        {
+          id: "lobby",
+          name: "Front Lobby",
+          x: 2,
+          y: 14,
+          w: 10,
+          h: 6,
+          surface: "tile",
+          track: "lobby",
+          ambience: "ac_hum",
+          description: "The front lobby. A chandelier clinks softly; reception is ahead."
+        },
+        {
+          id: "cafeteria",
+          name: "Cafeteria",
+          x: 2,
+          y: 20,
+          w: 10,
+          h: 9,
+          surface: "tile",
+          track: "cafeteria",
+          ambience: "cafeteria",
+          description: "The cafeteria. Employees chatter over cheese puffs. There is a vending machine and a DJ booth."
+        },
+        // Central spine
+        {
+          id: "hall_w",
+          name: "Main Hallway",
+          x: 10,
+          y: 6,
+          w: 4,
+          h: 23,
+          surface: "tile",
+          track: "calm",
+          ambience: "ac_hum",
+          description: "The main hallway runs north and south through the building."
+        },
+        // Right upper wing: production
+        {
+          id: "mixing",
+          name: "Mixing Room",
+          x: 14,
+          y: 6,
+          w: 9,
+          h: 7,
+          surface: "hard",
+          track: "factory",
+          ambience: "machine_hum",
+          description: "The mixing room. Huge vats gurgle with orange slurry."
+        },
+        {
+          id: "production",
+          name: "Production Floor",
+          x: 23,
+          y: 6,
+          w: 10,
+          h: 9,
+          surface: "hard",
+          track: "factory",
+          ambience: "conveyor",
+          description: "The production floor. Extruders rumble and the fryer hisses."
+        },
+        {
+          id: "supply",
+          name: "Supply Closet",
+          x: 14,
+          y: 13,
+          w: 9,
+          h: 6,
+          surface: "hard",
+          track: "calm",
+          ambience: "ac_hum",
+          description: "The supply closet. Shelves of ingredients and packaging line the walls."
+        },
+        {
+          id: "packing",
+          name: "Packing & Shipping",
+          x: 14,
+          y: 19,
+          w: 9,
+          h: 10,
+          surface: "hard",
+          track: "factory",
+          ambience: "conveyor",
+          description: "Packing and shipping. Bags crinkle and boxes thud. Tina buys goods and handles contracts."
+        },
+        {
+          id: "seasoning",
+          name: "Seasoning & Ovens",
+          x: 23,
+          y: 15,
+          w: 10,
+          h: 8,
+          surface: "hard",
+          track: "factory",
+          ambience: "fryer",
+          description: "Seasoning drums tumble and ovens hum warmly."
+        },
+        {
+          id: "assembly",
+          name: "Assembly Room",
+          x: 23,
+          y: 23,
+          w: 10,
+          h: 6,
+          surface: "hard",
+          track: "factory",
+          ambience: "machine_hum",
+          description: "The assembly room, where premium gift boxes come together."
+        },
+        // East wing: R&D, upgrades, mechanics
+        {
+          id: "rd_lab",
+          name: "Research & Development Lab",
+          x: 33,
+          y: 6,
+          w: 8,
+          h: 10,
+          surface: "tile",
+          track: "exec",
+          ambience: "beep_machine",
+          description: "The R&D lab. Beakers bubble and a centrifuge whirs. Dr. Brie works here.",
+          requires: "id_badge"
+        },
+        {
+          id: "workshop",
+          name: "Maintenance Workshop",
+          x: 33,
+          y: 16,
+          w: 8,
+          h: 7,
+          surface: "hard",
+          track: "factory",
+          ambience: "machine_hum",
+          description: "The workshop smells of grease and metal shavings. Rosa the mechanic installs upgrades here."
+        },
+        {
+          id: "warehouse",
+          name: "Warehouse",
+          x: 33,
+          y: 23,
+          w: 8,
+          h: 6,
+          surface: "hard",
+          track: "factory",
+          ambience: "conveyor",
+          description: "The warehouse. Tall shelves hold bulk stock. Hired employees wait for assignments here."
+        },
+        // Top floor
+        {
+          id: "exec",
+          name: "Executive Suite",
+          x: 2,
+          y: 2,
+          w: 39,
+          h: 4,
+          surface: "carpet",
+          track: "exec",
+          ambience: "clock_tick",
+          description: "The executive suite. The air smells of money and expensive cheese.",
+          requires: "id_badge"
+        }
+      ];
+      WORLD = { w: 43, h: 31 };
+      DOORS = [
+        { x: 5, y: 14, to: "hr" },
+        { x: 6, y: 20, to: "cafeteria" },
+        { x: 11, y: 17, to: "hall_w" },
+        { x: 10, y: 9, to: "hall_w" },
+        { x: 11, y: 24, to: "hall_w" },
+        { x: 13, y: 9, to: "mixing" },
+        { x: 13, y: 16, to: "supply" },
+        { x: 13, y: 23, to: "packing" },
+        { x: 22, y: 9, to: "production" },
+        { x: 18, y: 19, to: "packing" },
+        { x: 27, y: 15, to: "seasoning" },
+        { x: 22, y: 22, to: "seasoning" },
+        { x: 28, y: 23, to: "assembly" },
+        // east wing connections (hall_w east x=13; new rooms west x=33 — connect via a corridor through production/seasoning/assembly east walls)
+        { x: 32, y: 10, to: "rd_lab" },
+        // production (x up to 32) <-> rd_lab (x starts 33)
+        { x: 32, y: 19, to: "workshop" },
+        // seasoning east x=32 <-> workshop west x=33
+        { x: 32, y: 25, to: "warehouse" },
+        // assembly east x=32 <-> warehouse west x=33
+        // exec
+        { x: 5, y: 5, to: "hr", requires: "id_badge" },
+        { x: 12, y: 5, to: "hall_w", requires: "id_badge" },
+        { x: 20, y: 5, to: "production", requires: "id_badge" }
+      ];
+      OBJECTS = [
+        // Lobby
+        {
+          id: "reception",
+          type: "sign",
+          x: 7,
+          y: 17,
+          room: "lobby",
+          text: "Reception. New recruits should visit Linda in Human Resources, just north."
+        },
+        // HR
+        { id: "linda", type: "npc", npc: "recruiter", x: 6, y: 9, room: "hr" },
+        { id: "patel", type: "npc", npc: "hr_manager", x: 8, y: 11, room: "hr" },
+        // Mixing
+        { id: "gus", type: "npc", npc: "foreman", x: 16, y: 8, room: "mixing" },
+        { id: "mixer1", type: "station", station: "mixer", label: "Mixer", x: 19, y: 9, room: "mixing", sound: "machine_hum" },
+        // Production
+        { id: "extruder1", type: "station", station: "extruder", label: "Extruder", x: 25, y: 9, room: "production", sound: "conveyor" },
+        { id: "fryer1", type: "station", station: "fryer", label: "Fryer", x: 30, y: 11, room: "production", sound: "fryer" },
+        // Seasoning
+        { id: "oven1", type: "station", station: "oven", label: "Oven", x: 25, y: 18, room: "seasoning", sound: "machine_hum" },
+        { id: "season1", type: "station", station: "seasoner", label: "Seasoner", x: 30, y: 20, room: "seasoning", sound: "pack" },
+        // Packing
+        { id: "packer1", type: "station", station: "packer", label: "Packer", x: 16, y: 22, room: "packing", sound: "pack" },
+        { id: "assembler_packing", type: "station", station: "assembler", label: "Assembler", x: 20, y: 24, room: "packing", sound: "pack" },
+        { id: "tina", type: "npc", npc: "cashier", x: 18, y: 26, room: "packing" },
+        // Supply
+        { id: "ray", type: "npc", npc: "supplier", x: 16, y: 15, room: "supply" },
+        { id: "crate_corn", type: "container", x: 20, y: 16, room: "supply", label: "Crate of Corn", loot: { corn: 3 }, respawn: 20, sound: "pickup" },
+        { id: "crate_cheese", type: "container", x: 21, y: 17, room: "supply", label: "Cheese Barrel", loot: { cheese: 2 }, respawn: 25, sound: "pickup" },
+        { id: "crate_pack", type: "container", x: 20, y: 18, room: "supply", label: "Packaging Shelf", loot: { bag: 2, label: 2 }, respawn: 20, sound: "pickup" },
+        // Assembly
+        { id: "assembler1", type: "station", station: "assembler", label: "Assembler", x: 27, y: 26, room: "assembly", sound: "pack" },
+        // R&D
+        { id: "brie", type: "npc", npc: "scientist", x: 36, y: 9, room: "rd_lab" },
+        { id: "rd_bench", type: "station", station: "mixer", label: "Lab Bench", x: 39, y: 12, room: "rd_lab", sound: "beep_machine" },
+        // Workshop
+        { id: "rosa", type: "npc", npc: "mechanic", x: 36, y: 19, room: "workshop" },
+        { id: "toolbench", type: "station", station: "packer", label: "Tool Bench", x: 39, y: 21, room: "workshop", sound: "pack" },
+        // Warehouse
+        {
+          id: "hire_board",
+          type: "sign",
+          x: 36,
+          y: 25,
+          room: "warehouse",
+          text: "The employee assignment board. Talk to HR Manager Patel to hire and assign staff."
+        },
+        { id: "bulk_crate", type: "container", x: 38, y: 27, room: "warehouse", label: "Bulk Crate", loot: { corn: 5, flour: 3, oil: 2 }, respawn: 45, sound: "pickup" },
+        // Cafeteria
+        { id: "cafe_sign", type: "sign", x: 6, y: 23, room: "cafeteria", text: "Cafeteria. Take a break. Free samples on the counter." },
+        { id: "sample", type: "container", x: 9, y: 25, room: "cafeteria", label: "Sample Bowl", loot: { puff: 1 }, respawn: 30, sound: "crunch_big" },
+        { id: "vending", type: "shop", shop: "vending", label: "Vending Machine", x: 4, y: 27, room: "cafeteria", sound: "coin" },
+        { id: "dj_booth", type: "npc", npc: "dj", x: 10, y: 22, room: "cafeteria" },
+        // Executive
+        { id: "ceo_desk", type: "npc", npc: "ceo", x: 16, y: 4, room: "exec" },
+        {
+          id: "ceo_plaque",
+          type: "sign",
+          x: 24,
+          y: 3,
+          room: "exec",
+          text: "A plaque reads: Vice President of Crunch \u2014 a title earned, not given."
+        }
+      ];
+      START = { x: 7, y: 17, facing: 0 };
+    }
+  });
+
+  // src/data/quests.js
+  function levelForXp(xp) {
+    let lvl = 1;
+    for (let i = 0; i < LEVEL_XP.length; i++) if (xp >= LEVEL_XP[i]) lvl = i + 1;
+    return lvl;
+  }
+  function xpToNext(xp) {
+    const lvl = levelForXp(xp);
+    if (lvl >= LEVEL_XP.length) return { level: lvl, needed: Infinity, progress: 1 };
+    const base = LEVEL_XP[lvl - 1], next = LEVEL_XP[lvl];
+    return { level: lvl, base, next, needed: next - xp, progress: (xp - base) / (next - base) };
+  }
+  var QUESTS, LEVEL_XP;
+  var init_quests = __esm({
+    "src/data/quests.js"() {
+      QUESTS = {
+        intro: {
+          id: "intro",
+          title: "First Day on the Job",
+          giver: "recruiter",
+          description: "Make your first bag of Cheese Puffs and sell it.",
+          objectives: [
+            { type: "craft", recipeId: "cheese_slurry", count: 1, label: "Make Cheese Slurry" },
+            { type: "craft", recipeId: "puff", count: 1, label: "Extrude Puffs" },
+            { type: "craft", recipeId: "pack_puff", count: 1, label: "Bag the Puffs" },
+            { type: "sell", value: 20, label: "Earn 20 coins in sales" }
+          ],
+          rewards: { money: 50, xp: 60, items: { id_badge: 1 } },
+          next: "crunch_time"
+        },
+        crunch_time: {
+          id: "crunch_time",
+          title: "Crunch Time",
+          giver: "foreman",
+          description: "Produce Flamin' Hots and earn 250 in sales.",
+          objectives: [
+            { type: "craft", recipeId: "season_flamin", count: 1, label: "Make Flamin' Hots" },
+            { type: "craft", recipeId: "pack_flamin", count: 1, label: "Bag Flamin' Hots" },
+            { type: "sell", value: 250, label: "Earn 250 in sales" },
+            { type: "reach_level", level: 2, label: "Reach level 2" }
+          ],
+          rewards: { money: 120, xp: 140, items: { wrench: 1 } },
+          next: "expansion"
+        },
+        expansion: {
+          id: "expansion",
+          title: "Expanding the Line",
+          giver: "mechanic",
+          description: "Install your first upgrade and complete a contract.",
+          objectives: [
+            { type: "buy_upgrade", any: true, count: 1, label: "Buy an upgrade" },
+            { type: "contract", count: 1, label: "Complete a shipping contract" },
+            { type: "reach_level", level: 3, label: "Reach level 3" }
+          ],
+          rewards: { money: 250, xp: 250, items: { master_key: 1 } },
+          next: "research"
+        },
+        research: {
+          id: "research",
+          title: "R&D Department",
+          giver: "scientist",
+          description: "Fund a research project and hire one employee.",
+          objectives: [
+            { type: "research", count: 1, label: "Complete a research project" },
+            { type: "hire", count: 1, label: "Hire an employee" },
+            { type: "craft", recipeId: "party_mix", count: 1, label: "Assemble a Party Mix" }
+          ],
+          rewards: { money: 400, xp: 400 },
+          next: "corner_office"
+        },
+        corner_office: {
+          id: "corner_office",
+          title: "Climbing the Ladder",
+          giver: "cashier",
+          description: "Reach level 5 and build a Gift Box.",
+          objectives: [
+            { type: "reach_level", level: 5, label: "Reach level 5" },
+            { type: "craft", recipeId: "gift_box", count: 1, label: "Assemble a Gift Box" },
+            { type: "earn", value: 2e3, label: "Earn 2,000 coins total" }
+          ],
+          rewards: { money: 500, xp: 500 },
+          next: "final"
+        },
+        final: {
+          id: "final",
+          title: "The Big Cheese",
+          giver: "ceo",
+          description: "Deliver a Gift Box to the CEO.",
+          objectives: [
+            { type: "craft", recipeId: "gift_box", count: 1, label: "Assemble a Gift Box" },
+            { type: "talk", npc: "ceo", label: "Deliver to the CEO" }
+          ],
+          rewards: { money: 1e3, xp: 1e3 },
+          ending: "You are named Vice President of Crunch. The whole factory cheers. You have won Cheetos Co \u2014 but the snack empire never stops growing."
+        }
+      };
+      LEVEL_XP = [0, 100, 250, 500, 900, 1500, 2400, 3600, 5200, 7500, 1e4, 14e3, 2e4];
+    }
+  });
+
+  // src/core/state.js
+  function newGame() {
+    return {
+      version: 2,
+      createdAt: Date.now(),
+      player: {
+        x: START.x,
+        y: START.y,
+        facing: START.facing,
+        money: 50,
+        xp: 0,
+        level: 1,
+        jobTitle: "New Recruit",
+        morale: 80
+      },
+      vitals: { energy: 100 },
+      inventory: {},
+      skills: {},
+      // station id -> skill xp
+      upgrades: {},
+      // upgrade id -> level (1+)
+      unlockedRecipes: {},
+      // "station:recipeId" -> true  (researched)
+      unlockedUpgrades: {},
+      // upgrade id -> true (available to buy)
+      employees: {},
+      // employee id -> { assigned: bool, shifts: n }
+      contracts: { active: [], completed: 0 },
+      research: { current: null, until: 0, done: [] },
+      mail: [],
+      flags: {
+        hired: false,
+        visited: {},
+        containers: {},
+        unlocked: {},
+        met: {},
+        achievements: {},
+        gameWon: false,
+        stationsUsed: {}
+      },
+      quests: { active: null, completed: [], progress: {}, stepIndex: 0 },
+      stats: {
+        steps: 0,
+        crafted: {},
+        sold: 0,
+        earned: 0,
+        playtime: 0,
+        perfectCrafts: 0,
+        contractsCompleted: 0,
+        shifts: 0,
+        stationsUsed: {}
+      },
+      settings: loadSettings(),
+      time: { startedAt: Date.now(), elapsed: 0, shiftStart: Date.now(), shiftLength: 180 }
+    };
+  }
+  function replaceState(s) {
+    state = s;
+    emit(EVT.STATE, state);
+  }
+  function addItem(id, n = 1) {
+    state.inventory[id] = (state.inventory[id] || 0) + n;
+    emit(EVT.INVENTORY, { id, delta: n, inventory: state.inventory });
+  }
+  function removeItem(id, n = 1) {
+    const have = state.inventory[id] || 0;
+    if (have < n) return false;
+    state.inventory[id] = have - n;
+    if (state.inventory[id] <= 0) delete state.inventory[id];
+    emit(EVT.INVENTORY, { id, delta: -n, inventory: state.inventory });
+    return true;
+  }
+  function addMoney(n) {
+    state.player.money += n;
+    if (n > 0) state.stats.earned += n;
+    emit(EVT.MONEY, { money: state.player.money, delta: n });
+  }
+  function spendMoney(n) {
+    if (state.player.money < n) return false;
+    state.player.money -= n;
+    emit(EVT.MONEY, { money: state.player.money, delta: -n });
+    return true;
+  }
+  function addXp(n) {
+    state.player.xp += n;
+    const newLevel = levelForXp(state.player.xp);
+    if (newLevel > state.player.level) {
+      state.player.level = newLevel;
+      state.player.jobTitle = TITLES[Math.min(TITLES.length - 1, newLevel - 1)];
+      emit(EVT.LEVEL, { level: newLevel, title: state.player.jobTitle });
+    }
+    emit(EVT.XP, { xp: state.player.xp, level: state.player.level, delta: n });
+  }
+  function addSkillXp(station, n) {
+    state.skills[station] = (state.skills[station] || 0) + n;
+    emit(EVT.SKILL, { station, xp: state.skills[station], delta: n });
+  }
+  function addEnergy(n) {
+    state.vitals.energy = Math.max(0, Math.min(100, state.vitals.energy + n));
+    emit(EVT.VITALS, { energy: state.vitals.energy, morale: state.player.morale });
+  }
+  function addMorale(n) {
+    state.player.morale = Math.max(0, Math.min(100, state.player.morale + n));
+    emit(EVT.VITALS, { energy: state.vitals.energy, morale: state.player.morale });
+  }
+  function saveGame() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+      return true;
+    } catch (e) {
+      console.warn("save failed", e);
+      return false;
+    }
+  }
+  function loadGame() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      state = Object.assign(newGame(), s);
+      state.flags = Object.assign(newGame().flags, s.flags || {});
+      state.stats = Object.assign(newGame().stats, s.stats || {});
+      state.time = Object.assign(newGame().time, s.time || {});
+      state.settings = Object.assign(loadSettings(), s.settings || {});
+      emit(EVT.STATE, state);
+      return state;
+    } catch (e) {
+      console.warn("load failed", e);
+      return null;
+    }
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+    } catch {
+    }
+  }
+  function loadSettings() {
+    try {
+      return Object.assign({
+        speechRate: 1,
+        speechPitch: 1,
+        speechVoice: null,
+        masterVol: 0.9,
+        speechVol: 1,
+        musicVol: 0.45,
+        sfxVol: 1,
+        preBlip: true,
+        menuWrap: true,
+        reduceMotion: false,
+        showRadar: true,
+        autosave: true
+      }, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"));
+    } catch {
+      return { speechRate: 1, speechPitch: 1, masterVol: 0.9, speechVol: 1, musicVol: 0.45, sfxVol: 1, preBlip: true, menuWrap: true };
+    }
+  }
+  function startAutosave() {
+    setInterval(() => {
+      if (state.settings.autosave !== false) saveGame();
+    }, 15e3);
+    window.addEventListener("beforeunload", saveGame);
+  }
+  var SAVE_KEY, SETTINGS_KEY, state, getState, getPlayer, getInventory, hasItem, countItem, TITLES, setFlag, getFlag, hasSave;
+  var init_state = __esm({
+    "src/core/state.js"() {
+      init_events();
+      init_rooms();
+      init_quests();
+      SAVE_KEY = "cheetosco.save.v2";
+      SETTINGS_KEY = "cheetosco.settings.v2";
+      state = newGame();
+      getState = () => state;
+      getPlayer = () => state.player;
+      getInventory = () => state.inventory;
+      hasItem = (id, n = 1) => (state.inventory[id] || 0) >= n;
+      countItem = (id) => state.inventory[id] || 0;
+      TITLES = ["New Recruit", "Line Worker", "Snack Technician", "Shift Lead", "Floor Manager", "Director of Snacks", "Vice President of Crunch", "CEO of Crunch"];
+      setFlag = (k, v = true) => {
+        state.flags[k] = v;
+      };
+      getFlag = (k) => state.flags[k];
+      hasSave = () => {
+        try {
+          return !!localStorage.getItem(SAVE_KEY);
+        } catch {
+          return false;
+        }
+      };
+    }
+  });
+
+  // src/ui/menu.js
+  var menu_exports = {};
+  __export(menu_exports, {
+    closeAll: () => closeAll,
+    closeTop: () => closeTop,
+    initMenus: () => initMenus,
+    isMenuOpen: () => isMenuOpen,
+    openChoiceMenu: () => openChoiceMenu,
+    openMenu: () => openMenu
+  });
+  function initMenus() {
+    menuEl = document.getElementById("menu-root");
+    if (!menuEl) {
+      menuEl = document.createElement("div");
+      menuEl.id = "menu-root";
+      document.body.appendChild(menuEl);
+    }
+  }
+  function isMenuOpen() {
+    return stack.length > 0;
+  }
+  function openMenu({ title, subtitle, items, onClose, renderFooter, noSound }) {
+    cancelSpeech();
+    const m = { title, subtitle, items, index: 0, onClose, renderFooter, custom: !!renderFooter };
+    stack.push(m);
+    if (!noSound) playSound(SOUNDS.focus, { out: getSfxBus() });
+    render();
+    if (stack.length === 1) {
+      bindGestures();
+    }
+    speakIndex(0);
+    return m;
+  }
+  function openChoiceMenu(title, choices, onCancel) {
+    return openMenu({
+      title,
+      items: choices.map((c) => ({ label: c.label, onSelect: c.onSelect, disabled: c.disabled })),
+      onClose: onCancel
+    });
+  }
+  function closeTop() {
+    const top = stack.pop();
+    playSound(SOUNDS.back, { out: getSfxBus() });
+    cancelSpeech();
+    if (top?.onClose) {
+      try {
+        top.onClose();
+      } catch (e) {
+      }
+    }
+    render();
+    if (stack.length) {
+      speakIndex(stack[stack.length - 1].index);
+    } else {
+      unbindGestures();
+    }
+  }
+  function closeAll() {
+    stack = [];
+    render();
+    cancelSpeech();
+    unbindGestures();
+  }
+  function bindGestures() {
+    if (gestureCleanup.length > 0) return;
+    const up = onAction("up", () => move(-1));
+    const down = onAction("down", () => move(1));
+    const swipeUp = onAction("swipe-up", () => move(-1));
+    const swipeDown = onAction("swipe-down", () => move(1));
+    const swipeLeft = onAction("swipe-left", () => closeTop());
+    const swipeRight = onAction("swipe-right", () => closeTop());
+    const tap = onAction("tap", () => speakIndex(stack[stack.length - 1]?.index ?? 0));
+    const doubleTap = onAction("double-tap", () => select());
+    const interact2 = onAction("interact", () => select());
+    const back3 = onAction("back", () => closeTop());
+    gestureCleanup = [up, down, swipeUp, swipeDown, swipeLeft, swipeRight, tap, doubleTap, interact2, back3];
+  }
+  function unbindGestures() {
+    for (const cleanup of gestureCleanup) {
+      if (typeof cleanup === "function") cleanup();
+    }
+    gestureCleanup = [];
+  }
+  function move(d) {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    let idx = top.index;
+    const wrap = getState().settings.menuWrap !== false;
+    for (let attempt = 0; attempt < top.items.length; attempt++) {
+      const next = (idx + d + top.items.length) % top.items.length;
+      if (!wrap && (d > 0 && next <= idx || d < 0 && next >= idx)) break;
+      idx = next;
+      if (!top.items[idx].disabled) break;
+    }
+    top.index = idx;
+    render();
+    speakIndex(idx);
+  }
+  function select() {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    const item = top.items[top.index];
+    if (!item || item.disabled) {
+      playSound(SOUNDS.error, { out: getSfxBus() });
+      return;
+    }
+    playSound(SOUNDS.select, { out: getSfxBus() });
+    cancelSpeech();
+    if (item.onSelect) item.onSelect(item);
+  }
+  function speakIndex(i) {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    const item = top.items[i];
+    if (!item) return;
+    const label = typeof item.label === "string" ? item.label : item.text || "";
+    say(label, { blip: "focus", interrupt: true });
+  }
+  function render() {
+    if (!stack.length) {
+      menuEl.innerHTML = "";
+      menuEl.classList.remove("open");
+      return;
+    }
+    menuEl.classList.add("open");
+    menuEl.innerHTML = "<!-- menu active -->";
+  }
+  var menuEl, stack, gestureCleanup;
+  var init_menu = __esm({
+    "src/ui/menu.js"() {
+      init_speech();
+      init_synth();
+      init_context();
+      init_sounds();
+      init_state();
+      init_input();
+      menuEl = null;
+      stack = [];
+      gestureCleanup = [];
+    }
+  });
+
+  // src/data/upgrades.js
+  var UPGRADES;
+  var init_upgrades = __esm({
+    "src/data/upgrades.js"() {
+      UPGRADES = {
+        // --- Mixing ---
+        better_mixer: {
+          name: "Industrial Mixer",
+          category: "mixing",
+          desc: "Faster, smoother mixing. +15 quality on mixer recipes.",
+          cost: 200,
+          maxLevel: 3,
+          effect: (lvl) => ({ stationQuality: { mixer: 5 * lvl }, speed: 0.08 * lvl })
+        },
+        // --- Extruding ---
+        precision_dies: {
+          name: "Precision Extrusion Dies",
+          category: "extruding",
+          desc: "Sharper shapes. +20 quality on extruder recipes.",
+          cost: 350,
+          maxLevel: 3,
+          effect: (lvl) => ({ stationQuality: { extruder: 7 * lvl } })
+        },
+        // --- Frying ---
+        thermostat: {
+          name: "Digital Thermostat",
+          category: "frying",
+          desc: "Perfect oil temperature. +20 quality and 10% speed on fryer.",
+          cost: 300,
+          maxLevel: 3,
+          effect: (lvl) => ({ stationQuality: { fryer: 7 * lvl }, speed: 0.04 * lvl })
+        },
+        // --- Baking ---
+        convection: {
+          name: "Convection Oven",
+          category: "baking",
+          desc: "Even heat. +20 quality on oven recipes.",
+          cost: 320,
+          maxLevel: 3,
+          effect: (lvl) => ({ stationQuality: { oven: 7 * lvl } })
+        },
+        // --- Seasoning ---
+        tumbler: {
+          name: "Flavor Tumbler",
+          category: "seasoning",
+          desc: "Even coating, less waste. +20 quality on seasoning.",
+          cost: 280,
+          maxLevel: 3,
+          effect: (lvl) => ({ stationQuality: { seasoner: 7 * lvl } })
+        },
+        // --- Packing ---
+        auto_bagger: {
+          name: "Auto Bagger",
+          category: "packing",
+          desc: "Packaging is 20% faster per level.",
+          cost: 400,
+          maxLevel: 3,
+          effect: (lvl) => ({ stationSpeed: { packer: 0.1 * lvl } })
+        },
+        // --- Assembly ---
+        gift_wrap: {
+          name: "Gift-Wrap Station",
+          category: "assembly",
+          desc: "+15 quality and +10% value on assembled gift boxes.",
+          cost: 600,
+          maxLevel: 2,
+          effect: (lvl) => ({ stationQuality: { assembler: 8 * lvl }, incomeMul: 0.05 * lvl })
+        },
+        // --- Perks ---
+        comfy_shoes: {
+          name: "Anti-Fatigue Shoes",
+          category: "perk",
+          desc: "Walking uses 25% less energy per level.",
+          cost: 150,
+          maxLevel: 3,
+          effect: (lvl) => ({ walkEnergyMul: 1 - 0.25 * lvl })
+        },
+        coffee_machine: {
+          name: "Espresso Machine",
+          category: "perk",
+          desc: "Crafting uses 20% less energy per level and morale decays slower.",
+          cost: 250,
+          maxLevel: 3,
+          effect: (lvl) => ({ craftEnergyMul: 1 - 0.2 * lvl, moraleMul: 1 + 0.1 * lvl })
+        },
+        fanny_pack: {
+          name: "Bigger Fanny Pack",
+          category: "perk",
+          desc: "+12 inventory slots per level.",
+          cost: 120,
+          maxLevel: 4,
+          effect: (lvl) => ({ capacity: 12 * lvl })
+        },
+        lucky_hairnet: {
+          name: "Lucky Hairnet",
+          category: "perk",
+          desc: "Better random events and crit chance.",
+          cost: 500,
+          maxLevel: 2,
+          effect: (lvl) => ({ luck: 0.1 * lvl, critChance: 0.05 * lvl })
+        },
+        brand_deal: {
+          name: "Brand Deal",
+          category: "perk",
+          desc: "All products sell for 15% more per level.",
+          cost: 800,
+          maxLevel: 3,
+          effect: (lvl) => ({ incomeMul: 0.15 * lvl })
+        }
+      };
+    }
+  });
+
+  // src/data/skills.js
+  function skillXpForLevel(level) {
+    return Math.floor(40 * Math.pow(level - 1, 1.7));
+  }
+  function skillLevelForXp(xp) {
+    let lvl = 1;
+    for (let i = 1; i <= MAX_SKILL; i++) if (xp >= skillXpForLevel(i)) lvl = i;
+    return lvl;
+  }
+  function skillProgress(xp) {
+    const lvl = skillLevelForXp(xp);
+    if (lvl >= MAX_SKILL) return { level: lvl, progress: 1, next: null };
+    const base = skillXpForLevel(lvl), need = skillXpForLevel(lvl + 1);
+    return { level: lvl, progress: Math.max(0, Math.min(1, (xp - base) / (need - base))), next: need - xp };
+  }
+  function skillEffect(level) {
+    const t = (level - 1) / (MAX_SKILL - 1);
+    return {
+      speedMul: 1 - t * 0.45,
+      // up to 45% faster at max
+      qualityBonus: Math.round(t * 30),
+      // up to +30 quality points
+      xpMul: 1 + t * 0.5,
+      // earn xp faster
+      energyMul: 1 - t * 0.3,
+      // actions cost less energy
+      critChance: t * 0.25
+      // chance of a "perfect" batch
+    };
+  }
+  var MAX_SKILL, SKILLS, STATION_SKILL;
+  var init_skills = __esm({
+    "src/data/skills.js"() {
+      MAX_SKILL = 10;
+      SKILLS = {
+        mixing: { name: "Mixing", desc: "Blend slurries and spice blends.", icon: "\u{1F963}" },
+        extruding: { name: "Extruding", desc: "Shape cornmeal into puffs and crunchies.", icon: "\u{1F3ED}" },
+        frying: { name: "Frying", desc: "Master the fryer heat and timing.", icon: "\u{1F373}" },
+        baking: { name: "Baking", desc: "Crackers and baked goods.", icon: "\u{1F525}" },
+        seasoning: { name: "Seasoning", desc: "Apply the perfect coating.", icon: "\u2728" },
+        packing: { name: "Packing", desc: "Bag and box at speed.", icon: "\u{1F4E6}" },
+        assembly: { name: "Assembly", desc: "Combine premium products.", icon: "\u{1F381}" }
+      };
+      STATION_SKILL = {
+        mixer: "mixing",
+        extruder: "extruding",
+        fryer: "frying",
+        oven: "baking",
+        seasoner: "seasoning",
+        packer: "packing",
+        assembler: "assembly"
+      };
+    }
+  });
+
+  // src/systems/effects.js
+  var effects_exports = {};
+  __export(effects_exports, {
+    combinedEffects: () => combinedEffects,
+    effectForStation: () => effectForStation,
+    incomeMultiplier: () => incomeMultiplier,
+    inventoryCapacity: () => inventoryCapacity
+  });
+  function combinedEffects() {
+    const s = getState();
+    const eff = {
+      speedMul: 1,
+      qualityBonus: 0,
+      xpMul: 1,
+      energyMul: 1,
+      critChance: 0,
+      capacity: 24,
+      luck: 0,
+      incomeMul: 1,
+      walkEnergyMul: 1,
+      craftEnergyMul: 1,
+      moraleMul: 1,
+      stationQuality: {},
+      stationSpeed: {}
+    };
+    for (const [id, lvl] of Object.entries(s.upgrades || {})) {
+      const u = UPGRADES[id];
+      if (!u) continue;
+      const e = u.effect(lvl);
+      for (const [k, v] of Object.entries(e)) {
+        if (k === "stationQuality" || k === "stationSpeed") {
+          for (const [st, val] of Object.entries(v)) eff[k][st] = (eff[k][st] || 0) + val;
+        } else if (["capacity", "critChance", "luck", "incomeMul", "qualityBonus"].includes(k)) {
+          eff[k] = (eff[k] || 0) + v;
+        } else if (k.endsWith("Mul")) {
+          eff[k] *= v;
+        } else {
+          eff[k] = v;
+        }
+      }
+    }
+    return eff;
+  }
+  function effectForStation(stationId) {
+    const all = combinedEffects();
+    const s = getState();
+    const skillId = STATION_SKILL[stationId];
+    const skillXp = skillId ? s.skills[skillId] || 0 : 0;
+    const se = skillEffect(skillLevelFor(skillXp));
+    return {
+      speedMul: 1 - (all.stationSpeed[stationId] || 0) - (1 - se.speedMul),
+      qualityBonus: (all.stationQuality[stationId] || 0) + se.qualityBonus,
+      xpMul: se.xpMul,
+      energyMul: se.energyMul * (all.craftEnergyMul || 1),
+      critChance: se.critChance + (all.critChance || 0)
+    };
+  }
+  function skillLevelFor(xp) {
+    return skillLevelForXp(xp);
+  }
+  function inventoryCapacity() {
+    return 24 + (combinedEffects().capacity - 24) + 0;
+  }
+  function incomeMultiplier() {
+    return combinedEffects().incomeMul;
+  }
+  var init_effects = __esm({
+    "src/systems/effects.js"() {
+      init_state();
+      init_upgrades();
+      init_skills();
+      init_skills();
+    }
+  });
+
+  // src/main.js
+  init_context();
+  init_input();
+  init_menu();
+  init_speech();
+  init_sounds();
+  init_synth();
+
+  // src/data/music-tracks.js
+  var TRACKS = {
+    calm: {
+      root: "A2",
+      scale: "pentMin",
+      progression: [0, 5, 3, 7],
+      droneType: "sine",
+      droneVol: 0.06,
+      wave: "sine",
+      noteGap: 1800,
+      noteJitter: 2200,
+      noteDur: 3.2,
+      noteVol: 0.035,
+      cutoff: 1800,
+      detune: 6,
+      chordDur: 9e3,
+      gain: 0.22
+    },
+    lobby: {
+      root: "C3",
+      scale: "major",
+      progression: [0, 5, 7, 5],
+      droneType: "sine",
+      droneVol: 0.05,
+      wave: "triangle",
+      noteGap: 1400,
+      noteJitter: 1400,
+      noteDur: 2.6,
+      noteVol: 0.04,
+      cutoff: 2200,
+      detune: 8,
+      chordDur: 7e3,
+      gain: 0.2
+    },
+    factory: {
+      root: "D2",
+      scale: "dorian",
+      progression: [0, 3, 5, 2],
+      droneType: "sawtooth",
+      droneVol: 0.035,
+      wave: "triangle",
+      noteGap: 1200,
+      noteJitter: 1e3,
+      noteDur: 1.8,
+      noteVol: 0.03,
+      cutoff: 900,
+      detune: 10,
+      chordDur: 5e3,
+      gain: 0.16
+    },
+    cafeteria: {
+      root: "G2",
+      scale: "major",
+      progression: [0, 4, 5, 3],
+      droneType: "sine",
+      droneVol: 0.04,
+      wave: "triangle",
+      noteGap: 900,
+      noteJitter: 900,
+      noteDur: 1.4,
+      noteVol: 0.035,
+      cutoff: 2e3,
+      detune: 7,
+      chordDur: 6e3,
+      gain: 0.18
+    },
+    exec: {
+      root: "F2",
+      scale: "minor",
+      progression: [0, 3, 5, 4],
+      droneType: "sine",
+      droneVol: 0.05,
+      wave: "sine",
+      noteGap: 2600,
+      noteJitter: 2e3,
+      noteDur: 4,
+      noteVol: 0.04,
+      cutoff: 1600,
+      detune: 4,
+      chordDur: 11e3,
+      gain: 0.22
+    }
+  };
+
+  // src/audio/music.js
+  init_context();
+  init_synth();
+  var SCALES = {
+    major: [0, 2, 4, 5, 7, 9, 11],
+    minor: [0, 2, 3, 5, 7, 8, 10],
+    pentMaj: [0, 2, 4, 7, 9],
+    pentMin: [0, 3, 5, 7, 10],
+    dorian: [0, 2, 3, 5, 7, 9, 10]
+  };
+  var current = null;
+  var nextNoteTimer = null;
+  var chordTimer = null;
+  var activeVoices = [];
+  var gainNode = null;
+  function startTrack(track) {
+    if (!ac()) return;
+    stopTrack();
+    if (!track) return;
+    current = track;
+    const audio = ac();
+    gainNode = audio.createGain();
+    gainNode.gain.value = 0;
+    gainNode.gain.linearRampToValueAtTime(track.gain ?? 0.25, audio.currentTime + 1.5);
+    gainNode.connect(getMusicBus());
+    const root = noteToFreq(track.root || "A2");
+    const drone = audio.createOscillator();
+    drone.type = track.droneType || "sine";
+    drone.frequency.value = root;
+    const droneGain = audio.createGain();
+    droneGain.gain.value = 0;
+    const droneLp = audio.createBiquadFilter();
+    droneLp.type = "lowpass";
+    droneLp.frequency.value = 500;
+    drone.connect(droneLp);
+    droneLp.connect(droneGain);
+    droneGain.connect(gainNode);
+    drone.start();
+    droneGain.gain.linearRampToValueAtTime(track.droneVol ?? 0.08, audio.currentTime + 2);
+    activeVoices.push({ osc: drone, gain: droneGain });
+    const scale = SCALES[track.scale] || SCALES.pentMin;
+    const chordRoots = track.progression || [0, 3, 4, 0];
+    let step = 0;
+    const scheduleNote = () => {
+      if (!current) return;
+      const chordOffset = chordRoots[step % chordRoots.length];
+      const octave = 4 + Math.floor(Math.random() * 2);
+      const degree = scale[Math.floor(Math.random() * scale.length)];
+      const semis = (octave - 4) * 12 + degree + chordOffset;
+      const f = root * 2 * Math.pow(2, semis / 12);
+      playPadNote(f, track);
+      nextNoteTimer = setTimeout(scheduleNote, (track.noteGap ?? 1400) + Math.random() * (track.noteJitter ?? 1200));
+    };
+    const advanceChord = () => {
+      step++;
+      chordTimer = setTimeout(advanceChord, (track.chordDur ?? 6e3) + Math.random() * 2e3);
+    };
+    scheduleNote();
+    advanceChord();
+  }
+  function playPadNote(freq, track) {
+    const audio = ac();
+    const osc2 = audio.createOscillator();
+    osc2.type = track.wave || "triangle";
+    osc2.frequency.value = freq;
+    if (track.detune) osc2.detune.value = (Math.random() * 2 - 1) * track.detune;
+    const g = audio.createGain();
+    g.gain.value = 0;
+    const lp = audio.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = track.cutoff ?? 1600;
+    osc2.connect(lp);
+    lp.connect(g);
+    g.connect(gainNode);
+    const now = audio.currentTime;
+    const dur = (track.noteDur ?? 2.4) + Math.random() * 1.2;
+    const vol = (track.noteVol ?? 0.05) * (0.7 + Math.random() * 0.5);
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(vol, now + 0.4);
+    g.gain.linearRampToValueAtTime(vol * 0.6, now + dur * 0.6);
+    g.gain.linearRampToValueAtTime(0, now + dur);
+    osc2.start(now);
+    osc2.stop(now + dur + 0.1);
+    activeVoices.push({ osc: osc2, gain: g, until: now + dur });
+    setTimeout(() => {
+      activeVoices = activeVoices.filter((v) => v.osc !== osc2);
+    }, (dur + 0.3) * 1e3);
+  }
+  function stopTrack() {
+    current = null;
+    if (nextNoteTimer) clearTimeout(nextNoteTimer);
+    if (chordTimer) clearTimeout(chordTimer);
+    const audio = ac();
+    if (gainNode && audio) {
+      const now = audio.currentTime;
+      try {
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(1e-4, now + 0.6);
+      } catch (e) {
+      }
+      const old = gainNode;
+      setTimeout(() => {
+        try {
+          old.disconnect();
+        } catch (e) {
+        }
+      }, 800);
+    }
+    activeVoices = [];
+    gainNode = null;
+  }
+
+  // src/main.js
+  init_state();
+
+  // src/game.js
+  init_input();
+  init_speech();
+  init_synth();
+  init_context();
+  init_sounds();
+  init_menu();
+
+  // src/ui/station.js
+  init_menu();
+
+  // src/systems/crafting.js
+  init_state();
+
+  // src/data/recipes.js
+  var RECIPES = {
+    // ============================== MIXER ===================================
+    mixer: [
+      {
+        id: "cheese_slurry",
+        name: "Cheese Slurry",
+        inputs: { cheese: 2, oil: 1, water: 1 },
+        output: { itemId: "_slurry", count: 2 },
+        time: 4,
+        xp: 6,
+        skill: 12,
+        level: 1,
+        sound: "machine_hum",
+        desc: "Blend cheese, oil and water into a gooey orange slurry."
+      },
+      {
+        id: "spice_blend",
+        name: "Spice Blend",
+        inputs: { paprika: 2, salt: 1, cheese: 1, jalapeno: 1 },
+        output: { itemId: "_spice", count: 2 },
+        time: 3,
+        xp: 8,
+        skill: 14,
+        level: 2,
+        sound: "machine_hum",
+        desc: "A smoky, salty, fiery cheese dust for Flamin' snacks."
+      },
+      {
+        id: "sweet_dust",
+        name: "Sweet Dust",
+        inputs: { sugar: 2, cheese: 1 },
+        output: { itemId: "_sweetdust", count: 2 },
+        time: 3,
+        xp: 6,
+        skill: 12,
+        level: 3,
+        sound: "machine_hum",
+        desc: "A curious sweet-cheese powder."
+      },
+      {
+        id: "ranch_blend",
+        name: "Ranch Blend",
+        inputs: { cheese: 1, salt: 1, flour: 1, oil: 1 },
+        output: { itemId: "_ranch", count: 2 },
+        time: 4,
+        xp: 10,
+        skill: 16,
+        level: 4,
+        sound: "machine_hum",
+        desc: "Cool herby ranch powder."
+      },
+      {
+        id: "bbq_rub",
+        name: "BBQ Rub",
+        inputs: { paprika: 2, sugar: 1, salt: 1, flour: 1 },
+        output: { itemId: "_bbq", count: 2 },
+        time: 4,
+        xp: 12,
+        skill: 18,
+        level: 5,
+        sound: "machine_hum",
+        desc: "Smoky-sweet barbecue seasoning."
+      },
+      {
+        id: "truffle_oil",
+        name: "Truffle Cheese Mix",
+        inputs: { cheese: 3, oil: 2, salt: 1 },
+        output: { itemId: "_truffle", count: 2 },
+        time: 5,
+        xp: 18,
+        skill: 24,
+        level: 7,
+        sound: "machine_hum",
+        desc: "A premium truffle cheese blend for executive palates."
+      }
+    ],
+    // ============================= EXTRUDER =================================
+    extruder: [
+      {
+        id: "puff",
+        name: "Extrude Puffs",
+        inputs: { corn: 2, "_slurry": 1 },
+        output: { itemId: "puff", count: 4 },
+        time: 5,
+        xp: 10,
+        skill: 16,
+        level: 1,
+        sound: "conveyor",
+        desc: "Force cornmeal and slurry through the extruder into airy puffs."
+      },
+      {
+        id: "crunchy",
+        name: "Extrude Crunchies",
+        inputs: { corn: 3, "_slurry": 1 },
+        output: { itemId: "crunch", count: 4 },
+        time: 6,
+        xp: 12,
+        skill: 18,
+        level: 1,
+        sound: "conveyor",
+        desc: "A denser, crunchier extrusion."
+      },
+      {
+        id: "crunchy_pretzel",
+        name: "Extrude Pretzel Twists",
+        inputs: { flour: 2, "_slurry": 1, salt: 1 },
+        output: { itemId: "_pretzel_raw", count: 4 },
+        time: 6,
+        xp: 14,
+        skill: 20,
+        level: 3,
+        sound: "conveyor",
+        desc: "Twisted pretzel dough, ready for the fryer."
+      },
+      {
+        id: "popcorn_extrude",
+        name: "Cheese Popcorn",
+        inputs: { corn: 3, oil: 1, cheese: 1 },
+        output: { itemId: "popcorn", count: 3 },
+        time: 5,
+        xp: 11,
+        skill: 16,
+        level: 2,
+        sound: "conveyor",
+        desc: "Air-popped corn kissed with cheese."
+      }
+    ],
+    // =============================== FRYER ==================================
+    fryer: [
+      {
+        id: "fry_puffs",
+        name: "Fry Puffs",
+        inputs: { puff: 4, oil: 1 },
+        output: { itemId: "_friedpuff", count: 4 },
+        time: 4,
+        xp: 8,
+        skill: 14,
+        level: 1,
+        sound: "fryer",
+        desc: "Fry the puffs until they puff up golden."
+      },
+      {
+        id: "fry_crunch",
+        name: "Fry Crunchies",
+        inputs: { crunch: 4, oil: 1 },
+        output: { itemId: "_friedcrunch", count: 4 },
+        time: 5,
+        xp: 9,
+        skill: 16,
+        level: 1,
+        sound: "fryer",
+        desc: "Fry the crunchies to a perfect snap."
+      },
+      {
+        id: "fry_pretzel",
+        name: "Fry Pretzels",
+        inputs: { _pretzel_raw: 4, oil: 1, salt: 1 },
+        output: { itemId: "_friedpretzel", count: 4 },
+        time: 5,
+        xp: 13,
+        skill: 20,
+        level: 3,
+        sound: "fryer",
+        desc: "Fry pretzel twists until deeply golden."
+      },
+      {
+        id: "fry_curls",
+        name: "Fry Curls",
+        inputs: { _friedcrunch: 4, "_slurry": 1 },
+        output: { itemId: "_friedcurl", count: 4 },
+        time: 6,
+        xp: 15,
+        skill: 22,
+        level: 5,
+        sound: "fryer",
+        desc: "Extra-curly fries with a slurry glaze."
+      }
+    ],
+    // ================================ OVEN ==================================
+    oven: [
+      {
+        id: "bake_cracker",
+        name: "Bake Crackers",
+        inputs: { flour: 2, cheese: 1, oil: 1 },
+        output: { itemId: "_bakedcracker", count: 4 },
+        time: 6,
+        xp: 12,
+        skill: 18,
+        level: 2,
+        sound: "machine_hum",
+        desc: "Roll the dough and bake into golden crackers."
+      },
+      {
+        id: "bake_cookie",
+        name: "Bake Cheese Cookies",
+        inputs: { flour: 2, cheese: 2, sugar: 1, oil: 1 },
+        output: { itemId: "_bakedcookie", count: 4 },
+        time: 7,
+        xp: 16,
+        skill: 24,
+        level: 4,
+        sound: "machine_hum",
+        desc: "A surprisingly delicious savory-sweet cheese cookie."
+      },
+      {
+        id: "bake_crouton",
+        name: "Bake Croutons",
+        inputs: { flour: 3, oil: 1, salt: 1 },
+        output: { itemId: "_bakedcrouton", count: 4 },
+        time: 6,
+        xp: 14,
+        skill: 20,
+        level: 3,
+        sound: "machine_hum",
+        desc: "Toasty cheese croutons for salads."
+      }
+    ],
+    // ============================= SEASONER =================================
+    seasoner: [
+      {
+        id: "season_puff",
+        name: "Cheese Coat Puffs",
+        inputs: { _friedpuff: 4, cheese: 2 },
+        output: { itemId: "puff", count: 4 },
+        time: 4,
+        xp: 10,
+        skill: 14,
+        level: 1,
+        sound: "pack",
+        desc: "Tumble the puffs in cheese powder."
+      },
+      {
+        id: "season_crunch_cheese",
+        name: "Cheese Coat Crunchies",
+        inputs: { _friedcrunch: 4, cheese: 2 },
+        output: { itemId: "crunch", count: 4 },
+        time: 4,
+        xp: 10,
+        skill: 14,
+        level: 1,
+        sound: "pack",
+        desc: "Tumble crunchies in classic cheddar dust."
+      },
+      {
+        id: "season_flamin",
+        name: "Flamin' Hot Coat",
+        inputs: { _friedcrunch: 4, _spice: 1, cheese: 1 },
+        output: { itemId: "flamin", count: 4 },
+        time: 5,
+        xp: 18,
+        skill: 24,
+        level: 2,
+        sound: "pack",
+        desc: "Coat crunchies in the legendary Flamin' Hot blend."
+      },
+      {
+        id: "season_cracker",
+        name: "Cheese Top Crackers",
+        inputs: { _bakedcracker: 4, cheese: 1 },
+        output: { itemId: "cracker", count: 4 },
+        time: 3,
+        xp: 9,
+        skill: 12,
+        level: 2,
+        sound: "pack",
+        desc: "Dust the crackers with cheese."
+      },
+      {
+        id: "season_pretzel",
+        name: "Cheese Dip Pretzels",
+        inputs: { _friedpretzel: 4, cheese: 2 },
+        output: { itemId: "pretzel", count: 4 },
+        time: 4,
+        xp: 13,
+        skill: 18,
+        level: 3,
+        sound: "pack",
+        desc: "Dip pretzels in warm cheese."
+      },
+      {
+        id: "season_curl",
+        name: "Truffle Curls",
+        inputs: { _friedcurl: 4, _truffle: 1 },
+        output: { itemId: "truffle_curl", count: 4 },
+        time: 5,
+        xp: 22,
+        skill: 30,
+        level: 7,
+        sound: "pack",
+        desc: "Coat curls in decadent truffle cheese."
+      },
+      {
+        id: "season_ranch",
+        name: "Ranch Puffs",
+        inputs: { _friedpuff: 4, _ranch: 1 },
+        output: { itemId: "ranch_puff", count: 4 },
+        time: 4,
+        xp: 15,
+        skill: 20,
+        level: 4,
+        sound: "pack",
+        desc: "Cool ranch puffs."
+      },
+      {
+        id: "season_bbq",
+        name: "BBQ Crunchies",
+        inputs: { _friedcrunch: 4, _bbq: 1 },
+        output: { itemId: "bbq_crunch", count: 4 },
+        time: 4,
+        xp: 15,
+        skill: 20,
+        level: 5,
+        sound: "pack",
+        desc: "Smoky barbecue crunchies."
+      },
+      {
+        id: "season_cookie",
+        name: "Sweet Cheese Cookies",
+        inputs: { _bakedcookie: 4, _sweetdust: 1 },
+        output: { itemId: "cheese_cookie", count: 4 },
+        time: 4,
+        xp: 18,
+        skill: 24,
+        level: 4,
+        sound: "pack",
+        desc: "Dust cookies with sweet cheese powder."
+      },
+      {
+        id: "season_crouton",
+        name: "Garlic Croutons",
+        inputs: { _bakedcrouton: 4, cheese: 1, salt: 1 },
+        output: { itemId: "crouton", count: 4 },
+        time: 4,
+        xp: 14,
+        skill: 18,
+        level: 3,
+        sound: "pack",
+        desc: "Garlic-and-cheese croutons."
+      },
+      {
+        id: "season_popcorn",
+        name: "Cheese Popcorn",
+        inputs: { popcorn: 3, cheese: 2 },
+        output: { itemId: "popcorn", count: 3 },
+        time: 3,
+        xp: 10,
+        skill: 14,
+        level: 2,
+        sound: "pack",
+        desc: "Double cheese popcorn."
+      }
+    ],
+    // =============================== PACKER =================================
+    packer: [
+      { id: "pack_puff", name: "Bag Puffs", inputs: { puff: 4, bag: 1, label: 1 }, output: { itemId: "_packed_puff", count: 1 }, time: 3, xp: 8, skill: 12, level: 1, sound: "pack", desc: "Seal puffs into a branded bag." },
+      { id: "pack_crunch", name: "Bag Crunchies", inputs: { crunch: 4, bag: 1, label: 1 }, output: { itemId: "_packed_crunch", count: 1 }, time: 3, xp: 8, skill: 12, level: 1, sound: "pack", desc: "Seal crunchies into a bag." },
+      { id: "pack_flamin", name: "Bag Flamin' Hots", inputs: { flamin: 4, bag: 1, label: 1 }, output: { itemId: "_packed_flamin", count: 1 }, time: 3, xp: 10, skill: 14, level: 2, sound: "pack", desc: "Bag the spicy ones carefully." },
+      { id: "pack_cracker", name: "Box Crackers", inputs: { cracker: 4, box: 1, label: 1 }, output: { itemId: "_packed_cracker", count: 1 }, time: 3, xp: 8, skill: 12, level: 2, sound: "pack", desc: "Stack crackers into a box." },
+      { id: "pack_pretzel", name: "Bag Pretzels", inputs: { pretzel: 3, bag: 1, label: 1 }, output: { itemId: "_packed_pretzel", count: 1 }, time: 3, xp: 9, skill: 14, level: 3, sound: "pack", desc: "Bag the cheesy pretzels." },
+      { id: "pack_truffle", name: "Bag Truffle Curls", inputs: { truffle_curl: 4, bag: 1, label: 1 }, output: { itemId: "_packed_truffle", count: 1 }, time: 4, xp: 18, skill: 24, level: 7, sound: "pack", desc: "Luxury truffle curls." },
+      { id: "pack_ranch", name: "Bag Ranch Puffs", inputs: { ranch_puff: 4, bag: 1, label: 1 }, output: { itemId: "_packed_ranch", count: 1 }, time: 3, xp: 12, skill: 16, level: 4, sound: "pack", desc: "Ranch puffs in a bag." },
+      { id: "pack_bbq", name: "Bag BBQ Crunchies", inputs: { bbq_crunch: 4, bag: 1, label: 1 }, output: { itemId: "_packed_bbq", count: 1 }, time: 3, xp: 12, skill: 16, level: 5, sound: "pack", desc: "BBQ crunchies." },
+      { id: "pack_cookie", name: "Box Cheese Cookies", inputs: { cheese_cookie: 4, box: 1, label: 1 }, output: { itemId: "_packed_cookie", count: 1 }, time: 3, xp: 14, skill: 18, level: 4, sound: "pack", desc: "Box the cookies." },
+      { id: "pack_crouton", name: "Bag Croutons", inputs: { crouton: 4, bag: 1, label: 1 }, output: { itemId: "_packed_crouton", count: 1 }, time: 3, xp: 10, skill: 14, level: 3, sound: "pack", desc: "Croutons in a bag." },
+      { id: "pack_popcorn", name: "Bag Popcorn", inputs: { popcorn: 3, bag: 1, label: 1 }, output: { itemId: "_packed_popcorn", count: 1 }, time: 3, xp: 8, skill: 12, level: 2, sound: "pack", desc: "Bag the popcorn." }
+    ],
+    // ============================= ASSEMBLER ================================
+    assembler: [
+      {
+        id: "party_mix",
+        name: "Assemble Party Mix",
+        inputs: { _packed_puff: 1, _packed_crunch: 1, _packed_pretzel: 1, box: 1 },
+        output: { itemId: "party_mix", count: 1 },
+        time: 6,
+        xp: 20,
+        skill: 28,
+        level: 3,
+        sound: "pack",
+        desc: "Combine the best snacks into one big party box."
+      },
+      {
+        id: "gift_box",
+        name: "Assemble Gift Box",
+        inputs: { party_mix: 1, _packed_flamin: 1, _packed_cracker: 1, box: 1, label: 2 },
+        output: { itemId: "gift_box", count: 1 },
+        time: 8,
+        xp: 35,
+        skill: 40,
+        level: 4,
+        sound: "pack",
+        desc: "A premium gift assortment fit for the CEO."
+      },
+      {
+        id: "variety_pack",
+        name: "Assemble Variety Pack",
+        inputs: { _packed_puff: 1, _packed_ranch: 1, _packed_bbq: 1, _packed_popcorn: 1, box: 1, label: 2 },
+        output: { itemId: "variety_pack", count: 1 },
+        time: 7,
+        xp: 28,
+        skill: 34,
+        level: 5,
+        sound: "pack",
+        desc: "A variety pack of four flavors."
+      },
+      {
+        id: "executive_hamper",
+        name: "Assemble Executive Hamper",
+        inputs: { _packed_truffle: 1, gift_box: 1, _packed_cookie: 1, _packed_crouton: 1, box: 2, label: 3 },
+        output: { itemId: "exec_hamper", count: 1 },
+        time: 10,
+        xp: 60,
+        skill: 60,
+        level: 8,
+        sound: "pack",
+        desc: "The ultimate gift for a cheese-loving executive."
+      }
+    ]
+  };
+  var INTERMEDIATES = {
+    _slurry: { name: "Cheese Slurry", icon: "\u{1F7E0}", cat: "material" },
+    _spice: { name: "Spice Blend", icon: "\u{1F534}", cat: "material" },
+    _sweetdust: { name: "Sweet Dust", icon: "\u{1F7E1}", cat: "material" },
+    _ranch: { name: "Ranch Blend", icon: "\u26AA", cat: "material" },
+    _bbq: { name: "BBQ Rub", icon: "\u{1F7E4}", cat: "material" },
+    _truffle: { name: "Truffle Mix", icon: "\u26AB", cat: "material" },
+    _friedpuff: { name: "Fried Puff", icon: "\u{1F7E0}", cat: "material" },
+    _friedcrunch: { name: "Fried Crunchy", icon: "\u{1F7E4}", cat: "material" },
+    _friedpretzel: { name: "Fried Pretzel", icon: "\u{1F968}", cat: "material" },
+    _friedcurl: { name: "Fried Curl", icon: "\u{1F300}", cat: "material" },
+    _bakedcracker: { name: "Baked Cracker", icon: "\u{1F536}", cat: "material" },
+    _bakedcookie: { name: "Baked Cookie", icon: "\u{1F36A}", cat: "material" },
+    _bakedcrouton: { name: "Baked Crouton", icon: "\u2B1C", cat: "material" },
+    _pretzel_raw: { name: "Raw Pretzel", icon: "\u{1F968}", cat: "material" },
+    _packed_puff: { name: "Bag of Puffs", icon: "\u{1F961}", cat: "material" },
+    _packed_crunch: { name: "Bag of Crunchies", icon: "\u{1F961}", cat: "material" },
+    _packed_flamin: { name: "Bag of Flamin' Hots", icon: "\u{1F961}", cat: "material" },
+    _packed_cracker: { name: "Box of Crackers", icon: "\u{1F4E6}", cat: "material" },
+    _packed_pretzel: { name: "Bag of Pretzels", icon: "\u{1F961}", cat: "material" },
+    _packed_truffle: { name: "Bag of Truffle Curls", icon: "\u{1F961}", cat: "material" },
+    _packed_ranch: { name: "Bag of Ranch Puffs", icon: "\u{1F961}", cat: "material" },
+    _packed_bbq: { name: "Bag of BBQ Crunchies", icon: "\u{1F961}", cat: "material" },
+    _packed_cookie: { name: "Box of Cookies", icon: "\u{1F4E6}", cat: "material" },
+    _packed_crouton: { name: "Bag of Croutons", icon: "\u{1F961}", cat: "material" },
+    _packed_popcorn: { name: "Bag of Popcorn", icon: "\u{1F961}", cat: "material" }
+  };
+  function recipeById(id) {
+    for (const list of Object.values(RECIPES)) {
+      const r = list.find((x) => x.id === id);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  // src/data/items.js
+  var ITEMS = {
+    // ---- Raw ingredients ----
+    corn: { name: "Corn", plural: "Corn", cat: "ingredient", value: 2, desc: "Golden kernels straight from the farm.", icon: "\u{1F33D}" },
+    cheese: { name: "Cheese", plural: "Cheese", cat: "ingredient", value: 6, desc: "Aged cheddar powder, tangy and orange.", icon: "\u{1F9C0}" },
+    oil: { name: "Oil", plural: "Oil", cat: "ingredient", value: 3, desc: "Sunflower oil for frying.", icon: "\u{1FAD9}" },
+    salt: { name: "Salt", plural: "Salt", cat: "ingredient", value: 1, desc: "A pinch makes everything sing.", icon: "\u{1F9C2}" },
+    flour: { name: "Flour", plural: "Flour", cat: "ingredient", value: 2, desc: "Wheat flour, finely milled.", icon: "\u{1F33E}" },
+    paprika: { name: "Paprika", plural: "Paprika", cat: "ingredient", value: 4, desc: "Smoky red spice.", icon: "\u{1F336}\uFE0F" },
+    jalapeno: { name: "Jalape\xF1o", plural: "Jalape\xF1os", cat: "ingredient", value: 5, desc: "Brings the heat.", icon: "\u{1F336}\uFE0F" },
+    sugar: { name: "Sugar", plural: "Sugar", cat: "ingredient", value: 2, desc: "For the sweet dusting.", icon: "\u{1F36C}" },
+    water: { name: "Water", plural: "Water", cat: "ingredient", value: 0, desc: "Cool, clear water.", icon: "\u{1F4A7}" },
+    yeast: { name: "Yeast", plural: "Yeast", cat: "ingredient", value: 3, desc: "Makes dough rise.", icon: "\u{1FAE7}" },
+    butter: { name: "Butter", plural: "Butter", cat: "ingredient", value: 4, desc: "Creamy and rich.", icon: "\u{1F9C8}" },
+    garlic: { name: "Garlic", plural: "Garlic", cat: "ingredient", value: 3, desc: "For savory flavor.", icon: "\u{1F9C4}" },
+    herbs: { name: "Herbs", plural: "Herbs", cat: "ingredient", value: 4, desc: "Dried dill, chives and parsley.", icon: "\u{1F33F}" },
+    cocoa: { name: "Cocoa", plural: "Cocoa", cat: "ingredient", value: 6, desc: "For the secret chocolate experiment.", icon: "\u{1F36B}" },
+    // ---- Packaging ----
+    bag: { name: "Bag", plural: "Bags", cat: "material", value: 1, desc: "Crinkly foil bag.", icon: "\u{1F961}" },
+    box: { name: "Box", plural: "Boxes", cat: "material", value: 3, desc: "Cardboard shipping box.", icon: "\u{1F4E6}" },
+    label: { name: "Label", plural: "Labels", cat: "material", value: 1, desc: "The iconic Chester Cheetah label.", icon: "\u{1F3F7}\uFE0F" },
+    ribbon: { name: "Ribbon", plural: "Ribbons", cat: "material", value: 2, desc: "For premium gifts.", icon: "\u{1F380}" },
+    // ---- Finished products ----
+    puff: { name: "Cheese Puff", plural: "Cheese Puffs", cat: "product", value: 12, desc: "An airy orange cloud of cheese.", icon: "\u{1F9C0}" },
+    crunch: { name: "Crunchy", plural: "Crunchies", cat: "product", value: 14, desc: "The classic crunchy cheese snack.", icon: "\u{1F7E0}" },
+    flamin: { name: "Flamin' Hot", plural: "Flamin' Hots", cat: "product", value: 22, desc: "Spicy red and dangerously addictive.", icon: "\u{1F525}" },
+    cracker: { name: "Cheese Cracker", plural: "Cheese Crackers", cat: "product", value: 10, desc: "Baked, crispy, cheesy square.", icon: "\u{1F536}" },
+    pretzel: { name: "Cheese Pretzel", plural: "Cheese Pretzels", cat: "product", value: 16, desc: "Twisted pretzel with cheese coating.", icon: "\u{1F968}" },
+    popcorn: { name: "Cheese Popcorn", plural: "Cheese Popcorn", cat: "product", value: 11, desc: "Airy popcorn with cheese dust.", icon: "\u{1F37F}" },
+    crouton: { name: "Cheese Crouton", plural: "Cheese Croutons", cat: "product", value: 9, desc: "Toasty salad topper.", icon: "\u2B1C" },
+    cheese_cookie: { name: "Cheese Cookie", plural: "Cheese Cookies", cat: "product", value: 15, desc: "Savory-sweet and weirdly good.", icon: "\u{1F36A}" },
+    truffle_curl: { name: "Truffle Curl", plural: "Truffle Curls", cat: "product", value: 40, desc: "Luxury curls with real truffle.", icon: "\u{1F300}" },
+    ranch_puff: { name: "Ranch Puff", plural: "Ranch Puffs", cat: "product", value: 16, desc: "Cool and herby.", icon: "\u26AA" },
+    bbq_crunch: { name: "BBQ Crunchy", plural: "BBQ Crunchies", cat: "product", value: 17, desc: "Smoky and sweet.", icon: "\u{1F7E4}" },
+    party_mix: { name: "Party Mix", plural: "Party Mixes", cat: "product", value: 75, desc: "A festive bag of everything.", icon: "\u{1F389}" },
+    variety_pack: { name: "Variety Pack", plural: "Variety Packs", cat: "product", value: 95, desc: "Four flavors in one box.", icon: "\u{1F308}" },
+    gift_box: { name: "Gift Box", plural: "Gift Boxes", cat: "product", value: 150, desc: "Premium assortment in a fancy box.", icon: "\u{1F381}" },
+    exec_hamper: { name: "Executive Hamper", plural: "Executive Hampers", cat: "product", value: 350, desc: "The ultimate cheese gift.", icon: "\u{1F451}" },
+    // ---- Consumable food (restores energy/morale) ----
+    coffee: { name: "Coffee", plural: "Coffees", cat: "food", value: 5, desc: "A strong cup. Restores energy.", icon: "\u2615", energy: 35, morale: 5 },
+    energy_drink: { name: "Energy Drink", plural: "Energy Drinks", cat: "food", value: 12, desc: "Fizzy and intense. Big energy boost.", icon: "\u{1F964}", energy: 60, morale: -5 },
+    sandwich: { name: "Cheese Sandwich", plural: "Sandwiches", cat: "food", value: 8, desc: "A decent lunch. Restores energy and morale.", icon: "\u{1F96A}", energy: 40, morale: 20 },
+    donut: { name: "Donut", plural: "Donuts", cat: "food", value: 6, desc: "Glazed and glorious. Morale boost.", icon: "\u{1F369}", energy: 15, morale: 30 },
+    water_bottle: { name: "Water Bottle", plural: "Water Bottles", cat: "food", value: 2, desc: "Hydration is important.", icon: "\u{1F4A7}", energy: 10, morale: 2 },
+    // ---- Tools / unlocks ----
+    apron: { name: "Apron", plural: "Aprons", cat: "tool", value: 0, desc: "A crisp orange company apron.", icon: "\u{1F9BA}" },
+    id_badge: { name: "ID Badge", plural: "ID Badges", cat: "tool", value: 0, desc: "Grants access to more rooms.", icon: "\u{1FAAA}" },
+    master_key: { name: "Master Key", plural: "Master Keys", cat: "tool", value: 0, desc: "Opens every door in the building.", icon: "\u{1F511}" },
+    wrench: { name: "Wrench", plural: "Wrenches", cat: "tool", value: 0, desc: "For fixing broken machines.", icon: "\u{1F527}" },
+    clipboard: { name: "Clipboard", plural: "Clipboards", cat: "tool", value: 0, desc: "For taking orders.", icon: "\u{1F4CB}" },
+    // ---- Special ----
+    paycheck: { name: "Paycheck", plural: "Paychecks", cat: "special", value: 0, desc: "Hard-earned cash.", icon: "\u{1F4B5}" },
+    trophy: { name: "Trophy", plural: "Trophies", cat: "special", value: 0, desc: "Proof of cheesy greatness.", icon: "\u{1F3C6}" }
+  };
+  var ITEM_BY_NAME = Object.fromEntries(Object.entries(ITEMS).map(([k, v]) => [v.name.toLowerCase(), k]));
+
+  // src/systems/crafting.js
+  init_events();
+  init_effects();
+  init_skills();
+
+  // src/data/quality.js
+  var QUALITY_TIERS = [
+    { id: "burnt", min: -Infinity, max: 29, mult: 0.4, name: "Burnt", sound: "negative", color: "#555" },
+    { id: "poor", min: 30, max: 49, mult: 0.7, name: "Lumpy", sound: "blip", color: "#9a6a3a" },
+    { id: "standard", min: 50, max: 69, mult: 1, name: "Standard", sound: "success", color: "#ff7a00" },
+    { id: "good", min: 70, max: 84, mult: 1.35, name: "Tasty", sound: "positive", color: "#ffb347" },
+    { id: "great", min: 85, max: 94, mult: 1.7, name: "Delicious", sound: "coin", color: "#ffd089" },
+    { id: "perfect", min: 95, max: Infinity, mult: 2.4, name: "Perfect", sound: "levelup", color: "#ffd700" }
+  ];
+  function qualityFor(score) {
+    return QUALITY_TIERS.find((t) => score >= t.min && score <= t.max) || QUALITY_TIERS[2];
+  }
+  function rollQuality({ skillBonus = 0, upgradeBonus = 0, minigame = 0, crit = false, rng = Math.random }) {
+    const jitter = Math.round((rng() * 2 - 1) * 12);
+    let score = 50 + skillBonus + upgradeBonus + minigame + jitter;
+    if (crit) score += 25;
+    score = Math.max(0, Math.min(110, Math.round(score)));
+    return { score, tier: qualityFor(score) };
+  }
+
+  // src/systems/crafting.js
+  init_state();
+  var itemLabel = (id) => ITEMS[id]?.name || INTERMEDIATES[id]?.name || id;
+  var itemIcon = (id) => ITEMS[id]?.icon || INTERMEDIATES[id]?.icon || "\u2022";
+  var isIntermediate = (id) => id.startsWith("_");
+  var recipesFor = (stationId) => RECIPES[stationId] || [];
+  function availableRecipes(stationId) {
+    return recipesFor(stationId).map((r) => ({ ...r, station: stationId })).filter((r) => !r.research || getState().unlockedRecipes[`${stationId}:${r.id}`]);
+  }
+  function canCraft(recipe) {
+    const s = getState();
+    if (s.player.level < (recipe.level || 1)) return { ok: false, reason: `Requires level ${recipe.level}` };
+    for (const [id, n] of Object.entries(recipe.inputs)) if (countItem(id) < n) return { ok: false, reason: `Need ${n} ${itemLabel(id)}` };
+    if (s.vitals.energy < energyCost(recipe)) return { ok: false, reason: "Too tired. Rest or eat something." };
+    return { ok: true };
+  }
+  function energyCost(recipe) {
+    return Math.max(2, Math.round(4 + (recipe.time || 3)));
+  }
+  function craft(recipeId, opts = {}) {
+    const recipe = recipeById(recipeId);
+    if (!recipe) return Promise.resolve({ ok: false });
+    const check = canCraft(recipe);
+    if (!check.ok) {
+      emit(EVT.TOAST, { text: check.reason });
+      return Promise.resolve({ ok: false, reason: check.reason });
+    }
+    for (const [id, n] of Object.entries(recipe.inputs)) removeItem(id, n);
+    const station = recipe.station || opts.station;
+    const eff = station ? effectForStation(station) : { speedMul: 1, qualityBonus: 0, xpMul: 1, energyMul: 1, critChance: 0 };
+    addEnergy(-Math.round(energyCost(recipe) * eff.energyMul));
+    getState().stats.stationsUsed[station] = true;
+    emit(EVT.CRAFT_START, { recipe, station });
+    opts.onStart?.(recipe);
+    return new Promise((resolve) => {
+      const total = Math.max(800, (recipe.time || 3) * 1e3 * eff.speedMul);
+      const start = performance.now();
+      const tick2 = () => {
+        const t = performance.now() - start;
+        const p = Math.min(1, t / total);
+        opts.onProgress?.(p);
+        if (p < 1) requestAnimationFrame(tick2);
+        else {
+          const skillId = STATION_SKILL[station];
+          const se = skillId ? skillEffect(skillLevelForXp(getState().skills[skillId] || 0)) : { critChance: 0 };
+          const crit = Math.random() < eff.critChance + se.critChance;
+          const minigame = opts.minigame ?? 0;
+          const { score, tier } = rollQuality({
+            skillBonus: eff.qualityBonus,
+            upgradeBonus: 0,
+            minigame,
+            crit
+          });
+          const count = recipe.output.count + (crit ? 1 : 0);
+          addItem(recipe.output.itemId, count);
+          addXp(Math.round((recipe.xp || 0) * eff.xpMul));
+          if (skillId && recipe.skill) addSkillXp(skillId, recipe.skill);
+          const s = getState();
+          s.stats.crafted[recipeId] = (s.stats.crafted[recipeId] || 0) + count;
+          if (tier.id === "perfect") s.stats.perfectCrafts = (s.stats.perfectCrafts || 0) + 1;
+          emit(EVT.CRAFT_DONE, { recipe, quality: tier, score, count, crit });
+          opts.onDone?.(recipe, { quality: tier, score, count, crit });
+          resolve({ ok: true, recipe, quality: tier, count });
+        }
+      };
+      requestAnimationFrame(tick2);
+    });
+  }
+  function sellAll(finished = true) {
+    const inv = getInventory();
+    let total = 0, soldCount = 0;
+    const incomeMul = /* @__PURE__ */ (() => {
+      return 1;
+    })();
+    for (const [id, n] of Object.entries(inv)) {
+      const def = ITEMS[id];
+      const isPacked = id.startsWith("_packed_");
+      if (finished) {
+        if (isPacked) {
+          const inner = id.replace("_packed_", "");
+          const baseVal = ITEMS[inner]?.value ?? 5;
+          total += (baseVal + 8) * n;
+          soldCount += n;
+          removeItem(id, n);
+        } else if (def?.cat === "product") {
+          total += def.value * n;
+          soldCount += n;
+          removeItem(id, n);
+        }
+      } else if (def?.cat === "product") {
+        total += Math.floor(def.value * 0.5) * n;
+        soldCount += n;
+        removeItem(id, n);
+      }
+    }
+    if (total > 0) {
+      const eff = require_effects().combinedEffects();
+      total = Math.round(total * eff.incomeMul);
+      addMoney_import(total);
+      getState().stats.sold += soldCount;
+      emit(EVT.SELL, { total, count: soldCount, finished });
+    } else emit(EVT.TOAST, { text: "Nothing to sell." });
+    return { total, count: soldCount };
+  }
+  function require_effects() {
+    return effectsMod;
+  }
+  function addMoney_import(n) {
+    addMoney(n);
+  }
+  var effectsMod;
+  Promise.resolve().then(() => (init_effects(), effects_exports)).then((m) => effectsMod = m);
+
+  // src/ui/station.js
+  init_state();
+  init_speech();
+  init_synth();
+  init_context();
+  init_sounds();
+  init_skills();
+
+  // src/systems/timing.js
+  init_sounds();
+  init_synth();
+  init_context();
+  init_speech();
+  init_context();
+  var active = false;
+  var t0 = 0;
+  var raf = 0;
+  var resolveCb = null;
+  var sweepOsc = null;
+  var sweepGain = null;
+  function isTimingActive() {
+    return active;
+  }
+  function startTimingMinigame(durationMs = 2200) {
+    return new Promise((resolve) => {
+      active = true;
+      t0 = performance.now();
+      say("Hit the sweet spot!", { blip: "beep_machine" });
+      const audio = ac();
+      if (audio) {
+        sweepOsc = audio.createOscillator();
+        sweepGain = audio.createGain();
+        sweepOsc.type = "sine";
+        sweepOsc.frequency.value = 200;
+        sweepGain.gain.value = 0.08;
+        sweepOsc.connect(sweepGain);
+        sweepGain.connect(getSfxBus());
+        sweepOsc.start();
+      }
+      let dinged = false;
+      const loop = () => {
+        if (!active) return;
+        const t = (performance.now() - t0) / durationMs;
+        const phase = t % 1;
+        const pos = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+        if (sweepOsc) {
+          sweepOsc.frequency.value = 200 + pos * 600;
+        }
+        const inZone = pos > 0.4 && pos < 0.6;
+        if (inZone && !dinged) {
+          dinged = true;
+          playSound(SOUNDS.focus, { out: getSfxBus() });
+        }
+        if (!inZone) dinged = false;
+        raf = requestAnimationFrame(loop);
+      };
+      loop();
+      resolveCb = (hit) => {
+        active = false;
+        cancelAnimationFrame(raf);
+        if (sweepOsc) {
+          try {
+            sweepOsc.stop();
+          } catch (e) {
+          }
+          sweepOsc = null;
+          sweepGain = null;
+        }
+        let bonus = 0;
+        if (hit) {
+          const t = (performance.now() - t0) / durationMs;
+          const phase = t % 1;
+          const pos = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+          const dist = Math.abs(pos - 0.5);
+          if (dist < 0.2) {
+            bonus = Math.round(40 * (1 - dist / 0.2));
+            playSound(bonus > 25 ? SOUNDS.levelup : SOUNDS.success, { out: getSfxBus() });
+          } else {
+            playSound(SOUNDS.blip, { out: getSfxBus() });
+          }
+        }
+        resolve(bonus);
+      };
+      setTimeout(() => {
+        if (active) resolveCb(false);
+      }, durationMs + 200);
+    });
+  }
+  function tryHitTiming() {
+    if (active && resolveCb) {
+      const cb = resolveCb;
+      resolveCb = null;
+      cb(true);
+      return true;
+    }
+    return false;
+  }
+
+  // src/systems/achievements.js
+  init_state();
+
+  // src/data/achievements.js
+  var ACHIEVEMENTS = {
+    first_steps: {
+      name: "First Steps",
+      desc: "Take your first walk around the factory.",
+      icon: "\u{1F45F}",
+      reward: { money: 10 },
+      check: (s) => s.stats.steps >= 1
+    },
+    maraton_walker: {
+      name: "Floor Treader",
+      desc: "Walk 1,000 steps.",
+      icon: "\u{1F6B6}",
+      reward: { money: 50 },
+      check: (s) => s.stats.steps >= 1e3
+    },
+    first_crunch: {
+      name: "First Crunch",
+      desc: "Craft your first snack.",
+      icon: "\u{1F9C0}",
+      reward: { money: 25 },
+      check: (s) => Object.values(s.stats.crafted).reduce((a, b) => a + b, 0) >= 1
+    },
+    line_cook: {
+      name: "Line Cook",
+      desc: "Craft 50 items.",
+      icon: "\u{1F373}",
+      reward: { xp: 50 },
+      check: (s) => Object.values(s.stats.crafted).reduce((a, b) => a + b, 0) >= 50
+    },
+    master_chef: {
+      name: "Master Chef",
+      desc: "Craft 250 items.",
+      icon: "\u{1F468}\u200D\u{1F373}",
+      reward: { xp: 200 },
+      check: (s) => Object.values(s.stats.crafted).reduce((a, b) => a + b, 0) >= 250
+    },
+    first_sale: {
+      name: "First Sale",
+      desc: "Sell your first product.",
+      icon: "\u{1F4B0}",
+      reward: { money: 25 },
+      check: (s) => s.stats.earned >= 1
+    },
+    big_bucks: {
+      name: "Big Bucks",
+      desc: "Earn 1,000 coins total.",
+      icon: "\u{1F4B5}",
+      reward: { money: 100 },
+      check: (s) => s.stats.earned >= 1e3
+    },
+    tycoon: {
+      name: "Cheese Tycoon",
+      desc: "Earn 10,000 coins total.",
+      icon: "\u{1F3E6}",
+      reward: { xp: 500 },
+      check: (s) => s.stats.earned >= 1e4
+    },
+    perfect_batch: {
+      name: "Perfect Batch",
+      desc: "Craft a Perfect-quality product.",
+      icon: "\u2728",
+      reward: { xp: 100 },
+      check: (s) => s.stats.perfectCrafts >= 1
+    },
+    five_perfect: {
+      name: "Flawless",
+      desc: "Craft 5 Perfect products.",
+      icon: "\u{1F31F}",
+      reward: { money: 200 },
+      check: (s) => s.stats.perfectCrafts >= 5
+    },
+    jack_of_trades: {
+      name: "Jack of All Trades",
+      desc: "Use every station at least once.",
+      icon: "\u{1F6E0}\uFE0F",
+      reward: { xp: 80 },
+      check: (s) => ["mixer", "extruder", "fryer", "oven", "seasoner", "packer", "assembler"].every((k) => s.stats.stationsUsed?.[k])
+    },
+    skilled: {
+      name: "Specialist",
+      desc: "Reach skill level 5 in any station.",
+      icon: "\u{1F393}",
+      reward: { money: 100 },
+      check: (s) => Object.values(s.skills || {}).some((x) => x >= 500)
+    },
+    max_skill: {
+      name: "Grand Master",
+      desc: "Max out any station skill.",
+      icon: "\u{1F3C6}",
+      reward: { xp: 500 },
+      check: (s) => Object.values(s.skills || {}).some((x) => x >= 3e3)
+    },
+    people_person: {
+      name: "People Person",
+      desc: "Talk to every NPC.",
+      icon: "\u{1F5E3}\uFE0F",
+      reward: { xp: 40 },
+      check: (s) => ["recruiter", "foreman", "supplier", "cashier", "ceo", "mechanic", "scientist", "dj"].every((n) => s.flags.met?.[n])
+    },
+    contractor: {
+      name: "On Contract",
+      desc: "Complete your first contract.",
+      icon: "\u{1F4CB}",
+      reward: { money: 50 },
+      check: (s) => s.stats.contractsCompleted >= 1
+    },
+    enterprise: {
+      name: "Enterprise",
+      desc: "Complete 10 contracts.",
+      icon: "\u{1F91D}",
+      reward: { money: 300 },
+      check: (s) => s.stats.contractsCompleted >= 10
+    },
+    rnd: {
+      name: "Mad Scientist",
+      desc: "Unlock a recipe via R&D.",
+      icon: "\u{1F52C}",
+      reward: { xp: 60 },
+      check: (s) => Object.keys(s.flags.research || {}).length >= 1
+    },
+    fully_upgraded: {
+      name: "Fully Loaded",
+      desc: "Buy every upgrade.",
+      icon: "\u2699\uFE0F",
+      reward: { xp: 200 },
+      check: (s) => {
+        const U = Object.keys(__upgradeList || {});
+        return U.length > 0 && U.every((k) => (s.upgrades || {})[k]);
+      }
+    },
+    winner: {
+      name: "Vice President of Crunch",
+      desc: "Finish the game.",
+      icon: "\u{1F451}",
+      reward: {},
+      check: (s) => s.flags.gameWon
+    }
+  };
+  var __upgradeList = {};
+  function _bindUpgrades(u) {
+    __upgradeList = u;
+  }
+
+  // src/systems/achievements.js
+  init_upgrades();
+  init_speech();
+  init_sounds();
+  init_synth();
+  init_context();
+  _bindUpgrades(UPGRADES);
+  function checkAchievements() {
+    const s = getState();
+    for (const [id, a] of Object.entries(ACHIEVEMENTS)) {
+      if (s.flags.achievements[id]) continue;
+      try {
+        if (a.check(s)) grant(id, a);
+      } catch (e) {
+      }
+    }
+  }
+  function grant(id, a) {
+    const s = getState();
+    s.flags.achievements[id] = true;
+    const r = a.reward || {};
+    if (r.money) addMoney(r.money);
+    if (r.xp) addXp(r.xp);
+    if (r.items) for (const [k, v] of Object.entries(r.items)) addItem(k, v);
+    playSound(SOUNDS.levelup, { out: getSfxBus() });
+    say(`Achievement unlocked: ${a.name}!`, { blip: "levelup" });
+  }
+  function listAchievements() {
+    const s = getState();
+    return Object.entries(ACHIEVEMENTS).map(([id, a]) => ({ id, ...a, earned: !!s.flags.achievements[id] }));
+  }
+
+  // src/ui/station.js
+  function openStation(obj) {
+    const recipes = availableRecipes(obj.station);
+    const p = getPlayer();
+    const skillId = STATION_SKILL[obj.station];
+    const sp = skillId ? skillProgress(getState().skills[skillId] || 0) : null;
+    const items = recipes.map((r) => {
+      const check = canCraft(r);
+      const inputs = Object.entries(r.inputs).map(([id, n]) => `${n} ${itemLabel(id)}`).join(", ");
+      return {
+        label: r.name,
+        k: check.ok ? `${r.time}s \xB7 +${r.xp}xp` : "\u{1F512}",
+        tag: `Lv${r.level}`,
+        disabled: !check.ok,
+        onSelect: () => doCraft(r, obj),
+        _r: r,
+        _inputs: inputs
+      };
+    });
+    items.push({ label: "\u2190 Leave " + (obj.label || "station"), onSelect: closeTop });
+    openMenu({
+      title: obj.label || "Station",
+      subtitle: `Level ${p.level} \xB7 ${p.money}\xA2${skillId ? ` \xB7 ${SKILLS[skillId].name} Lv${sp.level}` : ""}`,
+      items,
+      renderFooter: () => sp ? `${SKILLS[skillId].desc} Skill progress: ${Math.round(sp.progress * 100)}%.` : "Pick a recipe."
+    });
+  }
+  async function doCraft(recipe, obj) {
+    closeTop();
+    say(`Starting: ${recipe.name}. Tap when you hear the ding for bonus quality.`, { blip: "beep_machine" });
+    const stationSound = SOUNDS[recipe.sound] || SOUNDS.machine_hum;
+    const sTimer = setInterval(() => playSound(stationSound, { out: getSfxBus() }), 700);
+    const minigame = await startTimingMinigame(2200);
+    showProgress(recipe.name, recipe.time);
+    const result = await craft(recipe.id, {
+      station: obj.station,
+      minigame,
+      onProgress: updateProgress
+    });
+    clearInterval(sTimer);
+    hideProgress();
+    if (!result.ok) return;
+    const { quality, count } = result;
+    playSound(SOUNDS[quality.tier.sound] || SOUNDS.ding, { out: getSfxBus() });
+    const out = `${itemIcon(recipe.output.itemId)} ${count} ${itemLabel(recipe.output.itemId)}`;
+    say(`${quality.name} quality! Produced ${out}.`, { blip: quality.tier.sound });
+    checkAchievements();
+  }
+  function showProgress(name) {
+    say("Working...", { blip: false });
+  }
+  function updateProgress(p) {
+  }
+  function hideProgress() {
+  }
+
+  // src/world/player.js
+  init_state();
+  init_events();
+  init_rooms();
+  init_sounds();
+  init_synth();
+  init_context();
+  var FACING = [
+    { dx: 1, dy: 0, name: "east" },
+    { dx: 0, dy: 1, name: "south" },
+    { dx: -1, dy: 0, name: "west" },
+    { dx: 0, dy: -1, name: "north" }
+  ];
+  var walkable = null;
+  var roomAtCache = null;
+  function expandDoor(d) {
+    const cells = [{ x: d.x, y: d.y, requires: d.requires }];
+    const a = ROOMS.find((r) => pointOnEdge(d, r));
+    if (a) {
+      if (d.y === a.y) cells.push({ x: d.x, y: d.y - 1, requires: d.requires });
+      else if (d.y === a.y + a.h - 1) cells.push({ x: d.x, y: d.y + 1, requires: d.requires });
+      else if (d.x === a.x) cells.push({ x: d.x - 1, y: d.y, requires: d.requires });
+      else if (d.x === a.x + a.w - 1) cells.push({ x: d.x + 1, y: d.y, requires: d.requires });
+    }
+    return cells;
+  }
+  function pointOnEdge(p, r) {
+    return (p.x === r.x || p.x === r.x + r.w - 1) && p.y >= r.y && p.y < r.y + r.h || (p.y === r.y || p.y === r.y + r.h - 1) && p.x >= r.x && p.x < r.x + r.w;
+  }
+  var doorCellSet = null;
+  function buildNavMesh() {
+    walkable = /* @__PURE__ */ new Set();
+    roomAtCache = /* @__PURE__ */ new Map();
+    doorCellSet = /* @__PURE__ */ new Map();
+    const allDoorCells = [];
+    for (const d of DOORS) {
+      for (const c of expandDoor(d)) {
+        allDoorCells.push(c);
+        doorCellSet.set(`${c.x},${c.y}`, c);
+      }
+    }
+    for (const r of ROOMS) {
+      for (let y = r.y; y < r.y + r.h; y++) {
+        for (let x = r.x; x < r.x + r.w; x++) {
+          const onEdge = x === r.x || x === r.x + r.w - 1 || y === r.y || y === r.y + r.h - 1;
+          const isDoor = allDoorCells.some((c) => c.x === x && c.y === y);
+          if (!onEdge || isDoor) {
+            walkable.add(`${x},${y}`);
+            if (!roomAtCache.has(`${x},${y}`)) roomAtCache.set(`${x},${y}`, r);
+          }
+        }
+      }
+    }
+    for (const c of allDoorCells) walkable.add(`${c.x},${c.y}`);
+  }
+  function doorAt(x, y) {
+    return doorCellSet?.get(`${x},${y}`) || null;
+  }
+  function isWalkable(x, y) {
+    if (x < 0 || y < 0 || x >= WORLD.w || y >= WORLD.h) return false;
+    if (!walkable) buildNavMesh();
+    return walkable.has(`${x},${y}`);
+  }
+  function roomAt(x, y) {
+    if (!roomAtCache) buildNavMesh();
+    return roomAtCache.get(`${x},${y}`) || null;
+  }
+  function objectAt(x, y) {
+    return OBJECTS.find((o) => o.x === x && o.y === y) || null;
+  }
+  function objectInFront() {
+    const p = getPlayer();
+    const f = FACING[p.facing];
+    return objectAt(p.x + f.dx, p.y + f.dy);
+  }
+  function currentRoom() {
+    const p = getPlayer();
+    return roomAt(p.x, p.y);
+  }
+  function face(dir) {
+    const p = getPlayer();
+    p.facing = dir & 3;
+    emit(EVT.MOVE, { x: p.x, y: p.y, facing: p.facing, turned: true });
+  }
+  function move2(dir) {
+    const p = getPlayer();
+    if (dir !== p.facing) {
+      face(dir);
+      return;
+    }
+    const f = FACING[dir];
+    const nx = p.x + f.dx, ny = p.y + f.dy;
+    const door = doorAt(nx, ny);
+    if (door?.requires && !getState().flags.unlocked?.[door.requires]) {
+      const has = getState().inventory[door.requires] > 0;
+      if (has) {
+        getState().flags.unlocked[door.requires] = true;
+        playSound(SOUNDS.door_open, { out: getSfxBus() });
+        emit(EVT.TOAST, { text: `Unlocked with ${door.requires}.` });
+      } else {
+        playSound(SOUNDS.door_locked, { out: getSfxBus() });
+        emit(EVT.TOAST, { text: `Locked. Need: ${door.requires}.` });
+        return;
+      }
+    }
+    const obj = objectAt(nx, ny);
+    if (obj && blocksMovement(obj)) {
+      playSound(SOUNDS.error, { out: getSfxBus(), vol: 0.5 });
+      emit(EVT.TOAST, { text: obj.label || obj.npc || "Something is there." });
+      return;
+    }
+    if (!isWalkable(nx, ny)) {
+      playSound(SOUNDS.error, { out: getSfxBus(), vol: 0.4 });
+      return;
+    }
+    const prevRoom = roomAt(p.x, p.y);
+    p.x = nx;
+    p.y = ny;
+    const nextRoom = roomAt(p.x, p.y);
+    p.facing = dir;
+    const surface = nextRoom?.surface || "hard";
+    playSound(SOUNDS[SURFACE_SOUNDS[surface]], { out: getSfxBus() });
+    const s = getState();
+    s.stats.steps++;
+    if (s.stats.steps % 8 === 0) {
+      const drain = 1 * (s.upgrades?.comfy_shoes || 0 ? 1 - 0.25 * s.upgrades.comfy_shoes : 1);
+      s.vitals.energy = Math.max(0, s.vitals.energy - drain);
+    }
+    emit(EVT.MOVE, { x: p.x, y: p.y, facing: p.facing });
+    if (nextRoom && nextRoom !== prevRoom) {
+      setFlag(`visited.${nextRoom.id}`, true);
+      getState().flags.visited[nextRoom.id] = true;
+      emit(EVT.ENTER_ROOM, { room: nextRoom, prev: prevRoom });
+    }
+  }
+  function blocksMovement(obj) {
+    return obj.type === "station" || obj.type === "npc" || obj.type === "container";
+  }
+  function scan() {
+    const p = getPlayer();
+    const room = currentRoom();
+    const nearby = OBJECTS.map((o) => ({ o, d: Math.hypot(o.x - p.x, o.y - p.y) })).filter(({ d }) => d <= 6).sort((a, b) => a.d - b.d);
+    return { room, nearby, player: { ...p } };
+  }
+
+  // src/data/npcs.js
+  var NPCS = {
+    recruiter: {
+      name: "Linda, HR Recruiter",
+      color: "#ffb347",
+      cue: "phone",
+      interval: 5e3,
+      greeting: "Hey there! You must be the new recruit. I am Linda from HR.",
+      graph: {
+        start: {
+          text: "Welcome to Cheetos Co! I will get you set up with an apron and your first assignment.",
+          options: [
+            { label: "Take the job", to: "hired" },
+            { label: "What will I be doing?", to: "explain" }
+          ]
+        },
+        explain: {
+          text: "You will move through the factory, make snacks at the machines, pack them, and ship them out. Hard work gets you promotions and raises. Ready?",
+          options: [
+            { label: "I am ready", to: "hired" },
+            { label: "Maybe later", to: "bye" }
+          ]
+        },
+        hired: {
+          text: "Excellent! Here is your apron and employee badge. Report to the Mixing Room and make your first batch of Cheese Slurry. The foreman will show you the rest.",
+          give: { apron: 1, id_badge: 1 },
+          action: "quest_start:intro",
+          next: "bye"
+        },
+        bye: { text: "Good luck out there, and remember \u2014 never skip the cheese!", end: true }
+      }
+    },
+    foreman: {
+      name: "Foreman Gus",
+      color: "#ff7a00",
+      cue: "npc_chatter",
+      interval: 4200,
+      greeting: "Fresh meat. Listen up, rookie.",
+      graph: {
+        start: {
+          text: "The Mixer is right behind me. Make Cheese Slurry, then extrude, fry, season, and pack. Tina in Shipping buys finished bags. Use Shift to scan for nearby machines.",
+          options: [
+            { label: "Got it, Gus", to: "tip" },
+            { label: "Any tips?", to: "tip2" }
+          ]
+        },
+        tip: { text: "Pro tip: tap a direction once to face it, tap again to walk. Hold to keep moving. Tap E or double-tap to interact.", end: true },
+        tip2: { text: "Quality matters. If you time your crafts with the timing cue, you make tastier snacks that sell for more. Buy upgrades and practice to get better.", next: "tip" }
+      }
+    },
+    supplier: {
+      name: "Warehouse Ray",
+      color: "#6ee07a",
+      cue: "npc_hello",
+      interval: 6e3,
+      greeting: "Need supplies? You came to the right guy.",
+      graph: {
+        start: {
+          text: "I sell ingredients and packaging. Fresh shipments every shift. What do you need?",
+          options: [
+            { label: "Buy ingredients", action: "shop:ingredients", to: "bought" },
+            { label: "Buy packaging", action: "shop:packaging", to: "bought" },
+            { label: "Sell me something rare", action: "shop:rare", to: "bought", requires: { level: 3 } },
+            { label: "Never mind", to: "bye" }
+          ]
+        },
+        bought: { text: "Pleasure doing business.", end: true },
+        bye: { text: "Come back when you are hungry for more supplies.", end: true }
+      }
+    },
+    cashier: {
+      name: "Shop Floor Tina",
+      color: "#ffd089",
+      cue: "cash",
+      interval: 7e3,
+      greeting: "Finished products? I will turn those into cash.",
+      graph: {
+        start: {
+          text: "I buy finished, packed snacks. Loose unpacked snacks are worth half. I also handle shipping contracts.",
+          options: [
+            { label: "Sell finished goods", action: "sell_finished", to: "sold" },
+            { label: "Sell loose snacks", action: "sell_loose", to: "sold" },
+            { label: "Shipping contracts", action: "contracts" },
+            { label: "Check prices", to: "prices" },
+            { label: "Goodbye", to: "bye" }
+          ]
+        },
+        prices: { text: "Bags sell for 20 to 50, gift boxes up to 150, and the Executive Hamper fetches 350. Quality multiplies the price.", next: "start" },
+        sold: { text: "Pleasure doing business. Keep that line moving!", end: true },
+        bye: { text: "See you next payday.", end: true }
+      }
+    },
+    ceo: {
+      name: "The Big Cheese (CEO)",
+      color: "#ffd700",
+      cue: "ding",
+      interval: 9e3,
+      greeting: "Ah, the employee of the hour.",
+      locked: true,
+      requires: { level: 5 },
+      graph: {
+        start: {
+          text: "You have come far. I have one final challenge: deliver a premium Gift Box to my office, and you will be named Vice President of Crunch.",
+          options: [
+            { label: "I will do it", action: "quest_start:final", to: "accepted" },
+            { label: "Tell me more", to: "more" }
+          ]
+        },
+        more: { text: "A Gift Box needs Party Mix, Flamin Hots, Crackers, packaging and labels. Assemble it and bring it here.", next: "start" },
+        accepted: { text: "Good. The board is watching. Do not make me look melted.", end: true }
+      }
+    },
+    // ---- New characters ----
+    mechanic: {
+      name: "Mechanic Rosa",
+      color: "#a0c4ff",
+      cue: "beep_machine",
+      interval: 5500,
+      greeting: "Something broken? Or something to upgrade?",
+      graph: {
+        start: {
+          text: "I install equipment upgrades and fix machines. Better gear means faster, higher-quality snacks.",
+          options: [
+            { label: "Browse upgrades", action: "upgrades" },
+            { label: "What do upgrades do?", to: "explain" },
+            { label: "Goodbye", to: "bye" }
+          ]
+        },
+        explain: { text: "Each station has its own gear: better mixers, precision dies, thermostats, tumblers and auto-baggers. Perks like comfy shoes save energy. Hover an item to hear its effect.", next: "start" },
+        bye: { text: "If it jams, hit it with a wrench. That is company policy.", end: true }
+      }
+    },
+    scientist: {
+      name: "Dr. Brie, R&D",
+      color: "#caffbf",
+      cue: "beep_machine",
+      interval: 8e3,
+      greeting: "Science! It is mostly cheese.",
+      requires: { level: 2 },
+      graph: {
+        start: {
+          text: "I develop new recipes and techniques. Fund my research and you will unlock new products, from ranch puffs to truffle curls.",
+          options: [
+            { label: "Start a research project", action: "research" },
+            { label: "How does R&D work?", to: "explain" },
+            { label: "Goodbye", to: "bye" }
+          ]
+        },
+        explain: { text: "Pick a project, pay the fee, and wait for the timer. Once complete, the recipe appears at the relevant station. Some projects unlock new upgrades too.", next: "start" },
+        bye: { text: "Eureka! Probably.", end: true }
+      }
+    },
+    hr_manager: {
+      name: "HR Manager Patel",
+      color: "#bdb2ff",
+      cue: "blip",
+      interval: 7e3,
+      greeting: "Welcome to Human Resources.",
+      graph: {
+        start: {
+          text: "I handle hiring, training, and benefits. Want to hire staff, take a break, or check your achievements?",
+          options: [
+            { label: "Hire employees", action: "employees" },
+            { label: "Rest (restore energy)", action: "rest" },
+            { label: "Achievements", action: "codex" },
+            { label: "Fast travel", action: "fast_travel" },
+            { label: "Goodbye", to: "bye" }
+          ]
+        },
+        bye: { text: "Remember your breaks. Burnout is not a company value.", end: true }
+      }
+    },
+    dj: {
+      name: "DJ Cheddar",
+      color: "#ffadad",
+      cue: "positive",
+      interval: 9e3,
+      greeting: "You are locked in to Cheetos Radio.",
+      graph: {
+        start: {
+          text: "Request a track or just enjoy the vibe. I also read the mail and announce company news.",
+          options: [
+            { label: "Change the music", action: "radio" },
+            { label: "Check mail", action: "mail" },
+            { label: "Goodbye", to: "bye" }
+          ]
+        },
+        bye: { text: "Keep those headphones cranked.", end: true }
+      }
+    }
+  };
+  function npcDef(id) {
+    return NPCS[id];
+  }
+
+  // src/core/dialogue.js
+  init_speech();
+  init_synth();
+  init_context();
+  init_sounds();
+  init_events();
+  init_state();
+
+  // src/systems/quests.js
+  init_state();
+  init_quests();
+  init_events();
+  init_speech();
+  function initQuests() {
+    on(EVT.CRAFT_DONE, ({ recipe }) => advance({ type: "craft", recipeId: recipe.id, item: recipe.output.itemId }));
+    on(EVT.SELL, ({ total }) => {
+      advance({ type: "sell", value: total });
+      advance({ type: "earn", value: total });
+    });
+    on(EVT.COLLECT, ({ id }) => advance({ type: "collect", item: id }));
+    on(EVT.ENTER_ROOM, ({ room }) => advance({ type: "enter", room: room.id }));
+    on(EVT.DIALOGUE, ({ npc }) => advance({ type: "talk", npc }));
+    on(EVT.LEVEL, ({ level }) => advance({ type: "reach_level", level }));
+    on(EVT.UPGRADE, () => advance({ type: "buy_upgrade", any: true }));
+    on(EVT.CONTRACT, ({ type }) => {
+      if (type === "complete") advance({ type: "contract" });
+    });
+    on(EVT.RESEARCH, ({ type }) => {
+      if (type === "complete") advance({ type: "research" });
+    });
+    on(EVT.EMPLOYEE, ({ type }) => {
+      if (type === "hire") advance({ type: "hire" });
+    });
+    on(EVT.MONEY, ({ delta }) => {
+      if (delta > 0) advance({ type: "earn", value: delta });
+    });
+  }
+  function startQuest(id) {
+    const s = getState();
+    if (s.quests.active || s.quests.completed.includes(id)) return;
+    const q = QUESTS[id];
+    if (!q) return;
+    s.quests.active = id;
+    s.quests.stepIndex = 0;
+    s.quests.progress = {};
+    setFlag("quest." + id, true);
+    emit(EVT.QUEST, { type: "start", quest: q });
+    say(`Quest started: ${q.title}. ${objectiveText(q, 0)}.`, { blip: "ding" });
+    live(`Quest: ${q.title}`);
+  }
+  function objectiveKey(qi, oi) {
+    return `${qi}.${oi}`;
+  }
+  function objectiveText(q, i) {
+    const o = q.objectives[i];
+    if (!o) return "";
+    const label = o.label || describeObjective(o);
+    const s = getState();
+    const have = s.quests.progress[`${q.id}.${i}`] || 0;
+    const need = o.count || o.value || o.level || 1;
+    if (o.type === "reach_level") return `Objective: ${label} (level ${have}/${need})`;
+    if (o.type === "sell") return `Objective: ${label} (${have}/${need} coins)`;
+    return `Objective: ${label} (${have}/${need})`;
+  }
+  function describeObjective(o) {
+    switch (o.type) {
+      case "craft":
+        return `Craft ${o.count} ${o.recipeId || o.item}`;
+      case "sell":
+        return `Earn ${o.value} in sales`;
+      case "collect":
+        return `Collect ${o.count} ${o.item}`;
+      case "enter":
+        return `Enter ${o.room}`;
+      case "talk":
+        return `Talk to ${o.npc}`;
+      case "reach_level":
+        return `Reach level ${o.level}`;
+    }
+  }
+  function matches(obj, evt) {
+    if (obj.type !== evt.type) return false;
+    if (obj.recipeId && obj.recipeId !== evt.recipeId) return false;
+    if (obj.item && obj.item !== evt.item) return false;
+    if (obj.npc && obj.npc !== evt.npc) return false;
+    if (obj.room && obj.room !== evt.room) return false;
+    return true;
+  }
+  function amountFor(evt) {
+    if (evt.value) return evt.value;
+    if (evt.count) return evt.count;
+    return 1;
+  }
+  function needFor(o) {
+    return o.count || o.value || o.level || 1;
+  }
+  function advance(evt) {
+    const s = getState();
+    if (!s.quests.active) return;
+    const q = QUESTS[s.quests.active];
+    if (!q) return;
+    const i = s.quests.stepIndex;
+    const obj = q.objectives[i];
+    if (!obj) return;
+    if (!matches(obj, evt)) return;
+    const key = objectiveKey(q.id, i);
+    const cur = s.quests.progress[key] || 0;
+    const nv = Math.max(cur, cur + amountFor(evt));
+    s.quests.progress[key] = nv;
+    if (nv >= needFor(obj)) {
+      s.quests.stepIndex++;
+      if (s.quests.stepIndex >= q.objectives.length) complete(q);
+      else {
+        say(objectiveText(q, s.quests.stepIndex), { blip: "focus" });
+        emit(EVT.QUEST, { type: "objective", quest: q, index: s.quests.stepIndex });
+      }
+    } else {
+      emit(EVT.QUEST, { type: "progress", quest: q, index: i, progress: nv, need: needFor(obj) });
+    }
+  }
+  function complete(q) {
+    const s = getState();
+    s.quests.completed.push(q.id);
+    s.quests.active = null;
+    s.quests.stepIndex = 0;
+    const r = q.rewards || {};
+    if (r.money) addMoney(r.money);
+    if (r.xp) addXp(r.xp);
+    if (r.items) for (const [id, n] of Object.entries(r.items)) addItem(id, n);
+    say(`Quest complete: ${q.title}!`, { blip: "levelup" });
+    if (r.money || r.xp) {
+      say(`Rewards: ${r.money ? r.money + " coins" : ""}${r.money && r.xp ? ", " : ""}${r.xp ? r.xp + " experience" : ""}.`, { blip: false });
+    }
+    if (q.ending) setTimeout(() => say(q.ending, { blip: "levelup" }), 1500);
+    if (q.next) setTimeout(() => startQuest(q.next), q.ending ? 6e3 : 2500);
+    emit(EVT.QUEST, { type: "complete", quest: q });
+  }
+  function questStatus() {
+    const s = getState();
+    if (!s.quests.active) return "No active quest.";
+    const q = QUESTS[s.quests.active];
+    return `${q.title}. ${objectiveText(q, s.quests.stepIndex)}`;
+  }
+
+  // src/ui/shop.js
+  init_menu();
+
+  // src/data/shops.js
+  var SHOPS = {
+    ingredients: {
+      title: "Buy Ingredients",
+      npc: "Ray",
+      items: [
+        { id: "corn", price: 3, step: 5 },
+        { id: "cheese", price: 8, step: 3 },
+        { id: "oil", price: 4, step: 3 },
+        { id: "salt", price: 2, step: 5 },
+        { id: "flour", price: 3, step: 5 },
+        { id: "paprika", price: 6, step: 3 },
+        { id: "jalapeno", price: 8, step: 2 },
+        { id: "sugar", price: 3, step: 3 },
+        { id: "yeast", price: 4, step: 3 },
+        { id: "butter", price: 5, step: 3 },
+        { id: "garlic", price: 4, step: 3 },
+        { id: "herbs", price: 5, step: 3 }
+      ]
+    },
+    packaging: {
+      title: "Buy Packaging",
+      npc: "Ray",
+      items: [
+        { id: "bag", price: 2, step: 10 },
+        { id: "box", price: 4, step: 5 },
+        { id: "label", price: 1, step: 10 },
+        { id: "ribbon", price: 3, step: 3 }
+      ]
+    },
+    rare: {
+      title: "Ray's Secret Stock",
+      requires: { level: 3 },
+      items: [
+        { id: "jalapeno", price: 6, step: 5 },
+        { id: "paprika", price: 5, step: 5 },
+        { id: "cocoa", price: 9, step: 3 },
+        { id: "herbs", price: 4, step: 5 }
+      ]
+    },
+    vending: {
+      title: "Vending Machine",
+      items: [
+        { id: "coffee", price: 5, step: 1 },
+        { id: "energy_drink", price: 12, step: 1 },
+        { id: "sandwich", price: 8, step: 1 },
+        { id: "donut", price: 6, step: 1 },
+        { id: "water_bottle", price: 2, step: 1 },
+        { id: "puff", price: 15, step: 1 }
+      ]
+    }
+  };
+
+  // src/ui/shop.js
+  init_state();
+  init_speech();
+  function openShop(id) {
+    const shop = SHOPS[id];
+    if (!shop) return;
+    if (shop.requires?.level && getPlayer().level < shop.requires.level) {
+      say("Ray does not have anything for you yet.", { blip: "error" });
+      return;
+    }
+    const items = shop.items.map((def) => ({
+      label: `${itemIcon(def.id)} ${def.step}\xD7 ${itemLabel(def.id)}`,
+      k: `${def.price * def.step}\xA2`,
+      onSelect: () => {
+        buyItem(def, def.step);
+        openShop(id);
+      }
+    }));
+    items.push({ label: "\u2190 Leave shop", onSelect: closeTop });
+    openMenu({
+      title: shop.title,
+      subtitle: `Coins: ${getPlayer().money}`,
+      items,
+      renderFooter: () => `Select an item to buy in batches. Coins: ${getPlayer().money}`
+    });
+  }
+
+  // src/ui/extras.js
+  init_menu();
+  init_state();
+  init_speech();
+  init_upgrades();
+  init_skills();
+
+  // src/data/research.js
+  var RESEARCH = {
+    ranch_powder: {
+      name: "Ranch Powder Formula",
+      desc: "Develops the cool ranch blend, unlocking ranch puffs.",
+      cost: 150,
+      time: 20,
+      level: 3,
+      unlock: { recipe: { station: "mixer", id: "ranch_blend" } }
+    },
+    bbq_rub: {
+      name: "BBQ Rub Formula",
+      desc: "Smoky-sweet BBQ seasoning for BBQ crunchies.",
+      cost: 180,
+      time: 25,
+      level: 4,
+      unlock: { recipe: { station: "mixer", id: "bbq_rub" } }
+    },
+    popcorn_line: {
+      name: "Popcorn Line",
+      desc: "Cheese popcorn becomes producible.",
+      cost: 220,
+      time: 30,
+      level: 2,
+      unlock: { recipe: { station: "extruder", id: "popcorn_extrude" } }
+    },
+    truffle_formula: {
+      name: "Truffle Cheese Formula",
+      desc: "A premium truffle blend for luxury curls.",
+      cost: 500,
+      time: 45,
+      level: 7,
+      unlock: { recipe: { station: "mixer", id: "truffle_oil" } }
+    },
+    variety_pack: {
+      name: "Variety Pack Design",
+      desc: "Lets assembly combine four flavors into a variety pack.",
+      cost: 350,
+      time: 35,
+      level: 5,
+      unlock: { recipe: { station: "assembler", id: "variety_pack" } }
+    },
+    exec_hamper: {
+      name: "Executive Hamper Design",
+      desc: "The ultimate luxury gift.",
+      cost: 800,
+      time: 60,
+      level: 8,
+      unlock: { recipe: { station: "assembler", id: "executive_hamper" } }
+    },
+    cookie_recipe: {
+      name: "Cheese Cookie Recipe",
+      desc: "A savory-sweet baked good.",
+      cost: 200,
+      time: 25,
+      level: 4,
+      unlock: { recipe: { station: "oven", id: "bake_cookie" } }
+    },
+    crouton_recipe: {
+      name: "Crouton Recipe",
+      desc: "Toasty cheese croutons.",
+      cost: 140,
+      time: 20,
+      level: 3,
+      unlock: { recipe: { station: "oven", id: "bake_crouton" } }
+    },
+    // Equipment techs that unlock upgrades in the shop
+    tech_auto_bagger: {
+      name: "Auto-Bagger Prototype",
+      desc: "Unlocks the Auto Bagger upgrade for purchase.",
+      cost: 300,
+      time: 30,
+      level: 3,
+      unlock: { upgrade: "auto_bagger" }
+    },
+    tech_gift_wrap: {
+      name: "Gift-Wrap Technique",
+      desc: "Unlocks the Gift-Wrap Station upgrade.",
+      cost: 450,
+      time: 40,
+      level: 5,
+      unlock: { upgrade: "gift_wrap" }
+    }
+  };
+
+  // src/systems/research.js
+  init_state();
+  init_upgrades();
+  init_events();
+  init_speech();
+  init_sounds();
+  init_synth();
+  init_context();
+  var timer = null;
+  function availableResearch() {
+    const s = getState();
+    return Object.entries(RESEARCH).filter(([id, r]) => !s.research.done.includes(id) && r.level <= s.player.level).map(([id, r]) => ({ id, ...r }));
+  }
+  function startResearch(id) {
+    const s = getState();
+    const r = RESEARCH[id];
+    if (!r) return false;
+    if (s.research.current) {
+      say("A project is already in progress.", { blip: "error" });
+      return false;
+    }
+    if (s.player.level < r.level) {
+      say(`Requires level ${r.level}.`, { blip: "error" });
+      return false;
+    }
+    if (!spendMoney(r.cost)) {
+      say("Not enough coins for research funding.", { blip: "error" });
+      return false;
+    }
+    s.research.current = id;
+    s.research.until = Date.now() + r.time * 1e3;
+    say(`Research started: ${r.name}. Takes ${r.time} seconds.`, { blip: "beep_machine" });
+    playSound(SOUNDS.beep_machine, { out: getSfxBus() });
+    scheduleTick();
+    emit(EVT.RESEARCH, { type: "start", id });
+    return true;
+  }
+  function scheduleTick() {
+    if (timer) clearTimeout(timer);
+    const s = getState();
+    if (!s.research.current) return;
+    const left = Math.max(0, s.research.until - Date.now());
+    timer = setTimeout(finishResearch, left + 50);
+  }
+  function researchProgress() {
+    const s = getState();
+    if (!s.research.current) return null;
+    const r = RESEARCH[s.research.current];
+    const total = r.time * 1e3;
+    const left = Math.max(0, s.research.until - Date.now());
+    return { id: s.research.current, ...r, left, progress: 1 - left / total };
+  }
+  function finishResearch() {
+    const s = getState();
+    const id = s.research.current;
+    const r = RESEARCH[id];
+    if (!r) return;
+    s.research.done.push(id);
+    s.research.current = null;
+    s.research.until = 0;
+    if (r.unlock.recipe) {
+      const key = `${r.unlock.recipe.station}:${r.unlock.recipe.id}`;
+      s.unlockedRecipes[key] = true;
+    }
+    if (r.unlock.upgrade) s.unlockedUpgrades[r.unlock.upgrade] = true;
+    addXp(40);
+    playSound(SOUNDS.levelup, { out: getSfxBus() });
+    say(`Research complete: ${r.name} is now available!`, { blip: "levelup" });
+    emit(EVT.RESEARCH, { type: "complete", id });
+  }
+  function initResearch() {
+    scheduleTick();
+  }
+
+  // src/data/employees.js
+  var EMPLOYEES = {
+    mixer_op: {
+      name: "Mixer Operator",
+      station: "mixer",
+      upfront: 250,
+      wage: 40,
+      quality: 55,
+      speedMul: 1,
+      interval: 12,
+      desc: "Runs the mixer automatically, producing slurry and spice blends."
+    },
+    extruder_op: {
+      name: "Extruder Tech",
+      station: "extruder",
+      upfront: 350,
+      wage: 55,
+      quality: 55,
+      speedMul: 1,
+      interval: 14,
+      desc: "Keeps the extruder producing puffs and crunchies."
+    },
+    fry_cook: {
+      name: "Fry Cook",
+      station: "fryer",
+      upfront: 350,
+      wage: 55,
+      quality: 60,
+      speedMul: 1,
+      interval: 12,
+      desc: "Minds the fryer."
+    },
+    baker: {
+      name: "Baker",
+      station: "oven",
+      upfront: 300,
+      wage: 50,
+      quality: 60,
+      speedMul: 1,
+      interval: 14,
+      desc: "Bakes crackers and cookies."
+    },
+    seasoner: {
+      name: "Seasoning Tech",
+      station: "seasoner",
+      upfront: 400,
+      wage: 60,
+      quality: 65,
+      speedMul: 1,
+      interval: 12,
+      desc: "Tumbles on the flavor coatings."
+    },
+    packer: {
+      name: "Packer",
+      station: "packer",
+      upfront: 450,
+      wage: 60,
+      quality: 65,
+      speedMul: 1.1,
+      interval: 10,
+      desc: "Bags and boxes the goods."
+    },
+    assembler: {
+      name: "Assembler",
+      station: "assembler",
+      upfront: 600,
+      wage: 80,
+      quality: 70,
+      speedMul: 1,
+      interval: 18,
+      desc: "Assembles party mixes and gift boxes."
+    }
+  };
+  function employeeQuality(emp, shiftsWorked) {
+    return Math.min(95, emp.quality + Math.floor(shiftsWorked * 1.5));
+  }
+
+  // src/systems/employees.js
+  init_state();
+  init_events();
+  init_speech();
+  init_sounds();
+  init_synth();
+  init_context();
+  var timers = {};
+  function hireableEmployees() {
+    const s = getState();
+    return Object.entries(EMPLOYEES).filter(([id]) => !s.employees[id]).map(([id, e]) => ({ id, ...e }));
+  }
+  function hiredEmployees() {
+    const s = getState();
+    return Object.entries(s.employees).map(([id, e]) => ({ id, ...EMPLOYEES[id], ...e }));
+  }
+  function hireEmployee(id) {
+    const emp = EMPLOYEES[id];
+    if (!emp) return false;
+    const s = getState();
+    if (s.employees[id]) return false;
+    if (!spendMoney(emp.upfront)) {
+      say("Not enough coins to hire.", { blip: "error" });
+      return false;
+    }
+    s.employees[id] = { assigned: false, shifts: 0 };
+    playSound(SOUNDS.positive, { out: getSfxBus() });
+    say(`Hired ${emp.name} for ${emp.upfront} coins. Assign them at a station from the staff menu.`, { blip: "positive" });
+    emit(EVT.EMPLOYEE, { type: "hire", id });
+    return true;
+  }
+  function toggleAssign(id) {
+    const s = getState();
+    const e = s.employees[id];
+    if (!e) return;
+    e.assigned = !e.assigned;
+    if (e.assigned) startEmployee(id);
+    else stopEmployee(id);
+    const emp = EMPLOYEES[id];
+    say(`${emp.name} ${e.assigned ? "is now on the job." : "is taking a break."}`, { blip: e.assigned ? "positive" : "back" });
+  }
+  function startEmployee(id) {
+    stopEmployee(id);
+    const emp = EMPLOYEES[id];
+    const run = () => {
+      const s = getState();
+      if (!s.employees[id]?.assigned) return;
+      attemptAutoCraft(emp, s.employees[id]);
+      timers[id] = setTimeout(run, emp.interval * 1e3);
+    };
+    timers[id] = setTimeout(run, 2e3);
+  }
+  function stopEmployee(id) {
+    if (timers[id]) {
+      clearTimeout(timers[id]);
+      delete timers[id];
+    }
+  }
+  function attemptAutoCraft(emp, empState) {
+    const recipes = (RECIPES[emp.station] || []).filter((r2) => {
+      if (r2.level > 1) return false;
+      for (const [id, n] of Object.entries(r2.inputs)) if (countItem(id) < n) return false;
+      return true;
+    });
+    if (!recipes.length) return;
+    const r = recipes[Math.floor(Math.random() * recipes.length)];
+    for (const [id, n] of Object.entries(r.inputs)) removeItem(id, n);
+    const q = rollQuality({ skillBonus: employeeQuality(emp, empState.shifts || 0) - 50, minigame: 0 });
+    addItem(r.output.itemId, r.output.count);
+    emit(EVT.CRAFT_DONE, { recipe: r, quality: q.tier, score: q.score, count: r.output.count, byEmployee: true });
+  }
+
+  // src/systems/contracts.js
+  init_state();
+
+  // src/data/contracts.js
+  var CONTRACT_POOL = [
+    { id: "c_puff_10", item: "_packed_puff", count: 10, reward: 300, xp: 60, level: 1 },
+    { id: "c_crunch_10", item: "_packed_crunch", count: 10, reward: 340, xp: 70, level: 1 },
+    { id: "c_cracker_8", item: "_packed_cracker", count: 8, reward: 260, xp: 60, level: 2 },
+    { id: "c_flamin_6", item: "_packed_flamin", count: 6, reward: 320, xp: 80, level: 2 },
+    { id: "c_pretzel_8", item: "_packed_pretzel", count: 8, reward: 360, xp: 80, level: 3 },
+    { id: "c_party_3", item: "party_mix", count: 3, reward: 330, xp: 90, level: 3 },
+    { id: "c_ranch_10", item: "_packed_ranch", count: 10, reward: 420, xp: 90, level: 4 },
+    { id: "c_bbq_10", item: "_packed_bbq", count: 10, reward: 440, xp: 90, level: 5 },
+    { id: "c_cookie_8", item: "_packed_cookie", count: 8, reward: 400, xp: 90, level: 4 },
+    { id: "c_truffle_5", item: "_packed_truffle", count: 5, reward: 500, xp: 120, level: 7 },
+    { id: "c_variety_3", item: "variety_pack", count: 3, reward: 400, xp: 110, level: 5 },
+    { id: "c_gift_2", item: "gift_box", count: 2, reward: 450, xp: 140, level: 5 },
+    { id: "c_hamper_1", item: "exec_hamper", count: 1, reward: 500, xp: 200, level: 8 }
+  ];
+  function contractsForLevel(level, activeIds = []) {
+    return CONTRACT_POOL.filter((c) => c.level <= level && !activeIds.includes(c.id)).sort(() => Math.random() - 0.5).slice(0, 4);
+  }
+
+  // src/systems/contracts.js
+  init_events();
+  init_speech();
+  function availableContracts() {
+    const s = getState();
+    const activeIds = s.contracts.active.map((c) => c.id);
+    return contractsForLevel(s.player.level, activeIds);
+  }
+  function activeContracts() {
+    return getState().contracts.active;
+  }
+  function acceptContract(c) {
+    const s = getState();
+    if (s.contracts.active.find((x) => x.id === c.id)) return;
+    s.contracts.active.push({ ...c, acceptedAt: Date.now() });
+    say(`Contract accepted: deliver ${c.count} ${itemLabel(c.item)}.`, { blip: "positive" });
+    emit(EVT.CONTRACT, { type: "accept", contract: c });
+  }
+  function deliverContracts() {
+    const s = getState();
+    const remaining = [];
+    let any = false;
+    for (const c of s.contracts.active) {
+      if (countItem(c.item) >= c.count) {
+        removeItem(c.item, c.count);
+        addMoney(c.reward);
+        addXp(c.xp);
+        s.stats.contractsCompleted = (s.stats.contractsCompleted || 0) + 1;
+        say(`Contract complete! +${c.reward} coins, +${c.xp} experience.`, { blip: "cash" });
+        any = true;
+        emit(EVT.CONTRACT, { type: "complete", contract: c });
+      } else remaining.push(c);
+    }
+    s.contracts.active = remaining;
+    if (!any) say("You do not have enough goods for any active contract.", { blip: "error" });
+    return any;
+  }
+
+  // src/systems/extras.js
+  init_state();
+  init_rooms();
+  init_speech();
+  init_sounds();
+  init_synth();
+  init_context();
+  function travelDestinations() {
+    const s = getState();
+    return ROOMS.filter((r) => s.flags.visited?.[r.id] || r.id === "lobby");
+  }
+  function fastTravel(roomId, cost = 10) {
+    const s = getState();
+    const r = ROOMS.find((x) => x.id === roomId);
+    if (!r) return false;
+    if (s.player.money < cost) {
+      say("Fast travel costs 10 coins.", { blip: "error" });
+      return false;
+    }
+    s.player.money -= cost;
+    s.player.x = Math.floor(r.x + r.w / 2);
+    s.player.y = Math.floor(r.y + r.h / 2);
+    playSound(SOUNDS.elevator, { out: getSfxBus() });
+    say(`Traveling to ${r.name}.`, { blip: "elevator" });
+    return true;
+  }
+  var MAIL_SEQUENCE = [
+    { after: 30, from: "Linda", subject: "Welcome!", body: "Welcome to Cheetos Co! If you get lost, hold Shift to scan your surroundings." },
+    { after: 120, from: "Gus", subject: "Pro tip", body: "Time your crafts with the sweet spot for higher quality \u2014 higher quality means more coins." },
+    { after: 300, from: "Rosa", subject: "Upgrades", body: "Heard you are growing. Come see me in the workshop for upgrades." },
+    { after: 600, from: "Dr. Brie", subject: "R&D", body: "We have new recipes in the lab. Bring coins and curiosity." }
+  ];
+  function checkMail() {
+    const s = getState();
+    for (const m of MAIL_SEQUENCE) {
+      if (s.time.elapsed >= m.after && !s.mail.find((x) => x.subject === m.subject)) {
+        s.mail.push({ ...m, read: false, receivedAt: s.time.elapsed });
+      }
+    }
+    return s.mail;
+  }
+  function readMail(i) {
+    const m = checkMail()[i];
+    if (!m) return;
+    m.read = true;
+    say(`${m.from} writes: ${m.body}`, { blip: "blip" });
+  }
+  function radioTracks() {
+    return Object.entries(TRACKS).map(([id, t]) => ({ id, ...t }));
+  }
+  function playRadio(id) {
+    const t = TRACKS[id];
+    if (!t) return;
+    startTrack(t);
+    say(`Now playing ${id}.`, { blip: "positive" });
+  }
+
+  // src/ui/extras.js
+  init_synth();
+  init_context();
+  init_sounds();
+  var back = () => ({ label: "\u2190 Back", onSelect: closeTop });
+  function upgradesMenu() {
+    const s = getState();
+    const items = Object.entries(UPGRADES).map(([id, u]) => {
+      const lvl = s.upgrades[id] || 0;
+      const maxed = u.maxLevel && lvl >= u.maxLevel;
+      const available = !u.requiresTech || s.unlockedUpgrades[u.requiresTech];
+      const cost = Math.round(u.cost * Math.pow(1.7, lvl));
+      const canBuy = !maxed && available && s.player.money >= cost;
+      return {
+        label: `${u.name} ${lvl ? `(Lv ${lvl})` : ""}`,
+        k: maxed ? "MAX" : available ? `${cost}\xA2` : "\u{1F52C}",
+        disabled: maxed || !available,
+        onSelect: () => {
+          if (spendMoney(cost)) {
+            s.upgrades[id] = lvl + 1;
+            playSound(SOUNDS.levelup, { out: getSfxBus() });
+            say(`Purchased ${u.name}.`, { blip: "levelup" });
+            Promise.resolve().then(() => (init_events(), events_exports)).then(({ emit: emit2, EVT: EVT2 }) => emit2(EVT2.UPGRADE, { id }));
+            checkAchievements();
+            upgradesMenu();
+          } else say("Not enough coins.", { blip: "error" });
+        }
+      };
+    });
+    items.push(back());
+    openMenu({
+      title: "Upgrades",
+      subtitle: `${getPlayer().money}\xA2`,
+      items,
+      renderFooter: () => "Buy equipment and perks. Higher levels cost more but stack."
+    });
+  }
+  function skillsMenu() {
+    const s = getState();
+    const items = Object.entries(SKILLS).map(([id, sk]) => {
+      const p = skillProgress(s.skills[id] || 0);
+      return {
+        label: `${sk.icon} ${sk.name} \u2014 Lv ${p.level}`,
+        k: `${Math.round(p.progress * 100)}%`,
+        onSelect: () => say(`${sk.name}, level ${p.level}. ${sk.desc} ${p.next ? p.next + " experience to next level." : "Maxed out."}`, { blip: "blip" })
+      };
+    });
+    items.push(back());
+    openMenu({ title: "Skills", items });
+  }
+  function researchMenu() {
+    const s = getState();
+    const current2 = researchProgress();
+    if (current2) {
+      openMenu({
+        title: "R&D",
+        subtitle: `In progress: ${current2.name} \u2014 ${Math.round(current2.progress * 100)}%`,
+        items: [{ label: "Wait for results", onSelect: () => say(`${Math.round((1 - current2.progress) * 100)}% remaining.`, { blip: "blip" }) }, back()]
+      });
+      return;
+    }
+    const list = availableResearch();
+    const items = list.map((r) => ({
+      label: r.name,
+      k: `${r.cost}\xA2 \xB7 ${r.time}s`,
+      onSelect: () => {
+        if (startResearch(r.id)) closeTop();
+      }
+    }));
+    const done = s.research.done.map((id) => RESEARCH[id]).filter(Boolean);
+    done.forEach((r) => items.push({ label: `\u2713 ${r.name}`, k: "done", disabled: true, onSelect() {
+    } }));
+    items.push(back());
+    openMenu({
+      title: "Research & Development",
+      subtitle: `${getPlayer().money}\xA2`,
+      items,
+      renderFooter: () => "Fund a project to unlock new recipes and upgrades."
+    });
+  }
+  function employeesMenu() {
+    const hired = hiredEmployees();
+    const hireable = hireableEmployees();
+    const items = [];
+    hired.forEach((e) => items.push({
+      label: `${e.assigned ? "\u{1F7E2}" : "\u26AA"} ${e.name}`,
+      k: `${e.wage}\xA2/shift`,
+      onSelect: () => {
+        toggleAssign(e.id);
+        employeesMenu();
+      }
+    }));
+    hireable.forEach((e) => items.push({
+      label: `Hire ${e.name}`,
+      k: `${e.upfront}\xA2`,
+      onSelect: () => {
+        if (hireEmployee(e.id)) employeesMenu();
+      }
+    }));
+    items.push(back());
+    openMenu({
+      title: "Staff",
+      subtitle: `${hired.length} on payroll`,
+      items,
+      renderFooter: () => "Select a hired worker to assign or unassign. They automatically run their station."
+    });
+  }
+  function contractsMenu() {
+    const active3 = activeContracts();
+    const avail = availableContracts();
+    const items = [];
+    active3.forEach((c) => items.push({
+      label: `\u{1F4CB} ${c.count}\xD7 ${itemLabel(c.item)}`,
+      k: `${c.reward}\xA2`,
+      onSelect: () => {
+        deliverContracts();
+        contractsMenu();
+      }
+    }));
+    avail.forEach((c) => items.push({
+      label: `Accept: ${c.count}\xD7 ${itemLabel(c.item)}`,
+      k: `${c.reward}\xA2`,
+      onSelect: () => {
+        acceptContract(c);
+        contractsMenu();
+      }
+    }));
+    items.push(back());
+    openMenu({
+      title: "Shipping Contracts",
+      items,
+      renderFooter: () => "Select an active contract to deliver, or accept a new one. Goods are consumed on delivery."
+    });
+  }
+  function achievementsMenu() {
+    const list = listAchievements();
+    const items = list.map((a) => ({
+      label: `${a.earned ? "\u{1F3C6}" : "\u{1F512}"} ${a.name}`,
+      k: a.earned ? "earned" : "",
+      disabled: !a.earned,
+      onSelect: () => say(a.desc, { blip: "blip" })
+    }));
+    items.push(back());
+    openMenu({ title: "Achievements", subtitle: `${list.filter((a) => a.earned).length}/${list.length}`, items });
+  }
+  function mailMenu() {
+    const mail = checkMail();
+    const items = mail.map((m, i) => ({
+      label: `${m.read ? "\u2709\uFE0F" : "\u{1F4EC}"} ${m.from}: ${m.subject}`,
+      onSelect: () => {
+        readMail(i);
+        mailMenu();
+      }
+    }));
+    if (!items.length) items.push({ label: "Inbox empty.", disabled: true, onSelect() {
+    } });
+    items.push(back());
+    openMenu({ title: "Mail", items });
+  }
+  function radioMenu() {
+    const items = radioTracks().map((t) => ({
+      label: `\u{1F3B5} ${t.id}${t.root ? ` (${t.root})` : ""}`,
+      onSelect: () => {
+        playRadio(t.id);
+        closeTop();
+      }
+    }));
+    items.push(back());
+    openMenu({ title: "Cheetos Radio", items });
+  }
+  function travelMenu() {
+    const items = travelDestinations().map((r) => ({
+      label: r.name,
+      k: "10\xA2",
+      onSelect: () => {
+        if (fastTravel(r.id)) closeTop();
+      }
+    }));
+    items.push(back());
+    openMenu({
+      title: "Fast Travel",
+      items,
+      renderFooter: () => "Travel instantly to any room you have visited. Costs 10 coins."
+    });
+  }
+  function vendingMenu() {
+    openShop("vending");
+  }
+  function restMenu() {
+    openMenu({
+      title: "Break Room",
+      subtitle: "Rest to restore energy.",
+      items: [
+        { label: "Take a 30-second break (+40 energy, -5 coins)", onSelect: () => {
+          const s = getState();
+          if (spendMoney(5)) {
+            s.vitals.energy = Math.min(100, s.vitals.energy + 40);
+            s.player.morale = Math.min(100, s.player.morale + 10);
+            say("Refreshed!", { blip: "positive" });
+            closeTop();
+          } else say("Need 5 coins.", { blip: "error" });
+        } },
+        { label: "End shift early (full restore, no paycheck)", onSelect: () => {
+          const s = getState();
+          s.vitals.energy = 100;
+          s.player.morale = Math.min(100, s.player.morale + 25);
+          s.time.elapsed = 0;
+          say("You clock out early and feel much better.", { blip: "positive" });
+          closeTop();
+        } },
+        back()
+      ]
+    });
+  }
+
+  // src/core/dialogue.js
+  var active2 = null;
+  function isInDialogue() {
+    return !!active2;
+  }
+  function talkTo(npcId) {
+    const npc = npcDef(npcId);
+    if (!npc) return;
+    if (npc.requires) {
+      for (const [k, v] of Object.entries(npc.requires)) {
+        if (k === "level" && getState().player.level < v) {
+          say("You do not have clearance yet. Come back when you are more experienced.", { blip: "error" });
+          playSound(SOUNDS.error, { out: getSfxBus() });
+          return;
+        }
+      }
+    }
+    active2 = { npc: npcId, node: "start" };
+    playSound(SOUNDS.npc_hello, { out: getSfxBus() });
+    if (npc.greeting) say(npc.greeting, { blip: false, rate: 1 });
+    setTimeout(() => gotoNode("start"), npc.greeting ? 1400 : 50);
+    emit(EVT.DIALOGUE, { npc: npcId, open: true });
+  }
+  function gotoNode(id) {
+    if (!active2) return;
+    const npc = npcDef(active2.npc);
+    const node = npc.graph[id];
+    if (!node) {
+      endDialogue();
+      return;
+    }
+    active2.node = id;
+    if (node.give) {
+      for (const [k, v] of Object.entries(node.give)) addItem(k, v);
+      playSound(SOUNDS.pickup, { out: getSfxBus() });
+    }
+    if (node.take) {
+      for (const [k, v] of Object.entries(node.take)) removeItem(k, v);
+    }
+    if (node.action) handleAction(node.action);
+    if (node.text) say(node.text, { blip: "blip" });
+    if (node.end) {
+      setTimeout(endDialogue, 2200);
+      return;
+    }
+    if (node.options) {
+      const opts = node.options.filter((o) => meetsRequirement(o.requires));
+      Promise.resolve().then(() => (init_menu(), menu_exports)).then(({ openChoiceMenu: openChoiceMenu2 }) => {
+        openChoiceMenu2(npc.name, opts.map((o) => ({
+          label: o.label,
+          onSelect: () => {
+            playSound(SOUNDS.select, { out: getSfxBus() });
+            if (o.action) handleAction(o.action);
+            if (o.give) {
+              for (const [k, v] of Object.entries(o.give)) addItem(k, v);
+              playSound(SOUNDS.pickup, { out: getSfxBus() });
+            }
+            if (o.to) gotoNode(o.to);
+            else endDialogue();
+          }
+        })), endDialogue);
+      });
+    } else if (node.next) {
+      setTimeout(() => gotoNode(node.next), 2600);
+    }
+  }
+  function meetsRequirement(req) {
+    if (!req) return true;
+    for (const [k, v] of Object.entries(req)) {
+      if (k === "level" && getState().player.level < v) return false;
+      if (k === "item" && !hasItem(v, 1)) return false;
+    }
+    return true;
+  }
+  function handleAction(action) {
+    if (!action) return;
+    if (action.startsWith("quest_start:")) {
+      const id = action.split(":")[1];
+      startQuest(id);
+    } else if (action.startsWith("shop:")) {
+      const id = action.split(":")[1];
+      setTimeout(() => openShop(id), 400);
+    } else if (action === "sell_finished") {
+      const r = sellAll(true);
+      if (r.total > 0) say(`Sold ${r.count} items for ${r.total} coins.`, { blip: "cash" });
+    } else if (action === "sell_loose") {
+      const r = sellAll(false);
+      if (r.total > 0) say(`Sold ${r.count} loose snacks for ${r.total} coins.`, { blip: "cash" });
+    } else if (action === "upgrades") {
+      setTimeout(upgradesMenu, 300);
+    } else if (action === "research") {
+      setTimeout(researchMenu, 300);
+    } else if (action === "employees") {
+      setTimeout(employeesMenu, 300);
+    } else if (action === "contracts") {
+      setTimeout(contractsMenu, 300);
+    } else if (action === "codex") {
+      setTimeout(achievementsMenu, 300);
+    } else if (action === "mail") {
+      setTimeout(mailMenu, 300);
+    } else if (action === "radio") {
+      setTimeout(radioMenu, 300);
+    } else if (action === "fast_travel") {
+      setTimeout(travelMenu, 300);
+    } else if (action === "rest") {
+      setTimeout(restMenu, 300);
+    } else if (action === "vending") {
+      setTimeout(vendingMenu, 300);
+    }
+  }
+  function endDialogue() {
+    if (!active2) return;
+    cancelSpeech();
+    active2 = null;
+    emit(EVT.DIALOGUE, { open: false });
+    playSound(SOUNDS.back, { out: getSfxBus() });
+  }
+  function buyItem(shopItem, qty = 1) {
+    const cost = shopItem.price * qty;
+    if (!spendMoney(cost)) {
+      say("Not enough coins.", { blip: "error" });
+      playSound(SOUNDS.error, { out: getSfxBus() });
+      return false;
+    }
+    addItem(shopItem.id, qty);
+    playSound(SOUNDS.coin, { out: getSfxBus() });
+    say(`Bought ${qty} ${itemLabel(shopItem.id)}.`, { blip: "coin" });
+    return true;
+  }
+
+  // src/game.js
+  init_state();
+  init_rooms();
+  init_events();
+
+  // src/audio/position.js
+  init_context();
+  init_synth();
+  var DIR = [
+    { x: 1, y: 0 },
+    // E
+    { x: 0, y: 1 },
+    // S
+    { x: -1, y: 0 },
+    // W
+    { x: 0, y: -1 }
+    // N
+  ];
+  function createPositionable() {
+    const audio = ac();
+    const input = audio.createGain();
+    const dist = audio.createGain();
+    const lp = audio.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 18e3;
+    lp.Q.value = 0.7;
+    let pan;
+    if (audio.createStereoPanner) {
+      pan = audio.createStereoPanner();
+      input.connect(pan);
+      pan.connect(dist);
+    } else {
+      const merger = audio.createChannelMerger(2);
+      const left = audio.createGain();
+      const right = audio.createGain();
+      input.connect(left);
+      input.connect(right);
+      left.connect(merger, 0, 0);
+      right.connect(merger, 0, 1);
+      merger.connect(dist);
+      pan = {
+        _fallback: true,
+        get pan() {
+          return this._v;
+        },
+        set pan(v) {
+          this._v = v;
+          const p = Math.max(-1, Math.min(1, v));
+          left.gain.value = Math.cos((p + 1) * Math.PI / 4);
+          right.gain.value = Math.sin((p + 1) * Math.PI / 4);
+        },
+        _setPan(v) {
+          this.pan = v;
+        },
+        _v: 0
+      };
+    }
+    dist.connect(lp);
+    lp.connect(getSfxBus());
+    return { input, pan, dist, lp };
+  }
+  function updatePositionable(p, ex, ey, lx, ly, facing, opts = {}) {
+    const dx = ex - lx, dy = ey - ly;
+    const distEuclid = Math.hypot(dx, dy);
+    const f = DIR[facing & 3];
+    const rx = -f.y, ry = f.x;
+    let side = dx * rx + dy * ry;
+    const forward = dx * f.x + dy * f.y;
+    let lateral = distEuclid > 1e-3 ? side / distEuclid : 0;
+    lateral = Math.max(-1, Math.min(1, lateral));
+    if (p.pan._setPan) p.pan._setPan(lateral);
+    else p.pan.pan.value = lateral;
+    const range = opts.range || 8;
+    const norm = Math.min(1, distEuclid / range);
+    let gain = 1 / (1 + norm * norm * 2.2);
+    if (forward < -0.1) gain *= 0.7;
+    p.dist.gain.value = gain * (opts.vol ?? 1);
+    const occl = opts.occluded ? 0.35 : 1;
+    const cutoff = 18e3 * (1 - norm * 0.75) * occl;
+    p.lp.frequency.value = Math.max(350, cutoff);
+  }
+  function playAt(sound, ex, ey, listener, opts = {}) {
+    if (!listener) return playSound(sound, { out: getSfxBus(), ...opts });
+    const p = createPositionable();
+    updatePositionable(p, ex, ey, listener.x, listener.y, listener.facing, opts);
+    const h = playSound(sound, { ...opts, out: p.input });
+    const dur = Math.max(...(Array.isArray(sound) ? sound : sound.voices || [sound]).map((v) => (v.delay || 0) + (typeof v.dur === "number" ? v.dur : v.dur?.max || 1)));
+    setTimeout(() => {
+      try {
+        p.lp.disconnect();
+        p.dist.disconnect();
+      } catch (e) {
+      }
+    }, (dur + 0.3) * 1e3);
+    return h;
+  }
+  var Beacon = class {
+    constructor(sound, getPos, opts = {}) {
+      this.sound = sound;
+      this.getPos = getPos;
+      this.opts = opts;
+      this.enabled = opts.enabled !== false;
+      this.interval = opts.interval ?? 2600;
+      this.jitter = opts.jitter ?? 700;
+      this.range = opts.range ?? 8;
+      this.volume = opts.volume ?? 1;
+      this.timer = null;
+      this.pos = createPositionable();
+    }
+    start() {
+      if (this.timer) return;
+      const tick2 = () => {
+        this.emit();
+        const next = this.interval + (Math.random() * 2 - 1) * this.jitter;
+        this.timer = setTimeout(tick2, Math.max(300, next));
+      };
+      this.timer = setTimeout(tick2, 500 + Math.random() * 600);
+    }
+    stop() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+      try {
+        this.pos.lp.disconnect();
+        this.pos.dist.disconnect();
+      } catch (e) {
+      }
+    }
+    update(listener) {
+      const e = this.getPos();
+      if (!e) return;
+      updatePositionable(this.pos, e.x, e.y, listener.x, listener.y, listener.facing, { range: this.range, vol: this.volume, occluded: e.occluded });
+    }
+    emit() {
+      if (!this.enabled) return;
+      const e = this.getPos();
+      if (!e) return;
+      playSound(this.sound, { out: this.pos.input });
+    }
+  };
+
+  // src/ui/hud.js
+  init_events();
+  init_speech();
+  function initHud() {
+    on(EVT.TOAST, ({ text }) => toast(text));
+    on(EVT.ENTER_ROOM, ({ room }) => caption(room.name));
+    on(EVT.MOVE, () => drawRadar());
+    on(EVT.INVENTORY, () => drawRadar());
+    on(EVT.LEVEL, ({ level, title }) => toast(`Level up! Now level ${level}: ${title}`));
+    on(EVT.QUEST, ({ type }) => {
+      if (type === "complete") toast("Quest complete!");
+      if (type === "start") toast("New quest");
+    });
+  }
+  function caption(text, ms = 2200) {
+  }
+  function toast(text, ms = 2200) {
+    say(text, { blip: "blip" });
+  }
+  function drawRadar() {
+  }
+
+  // src/ui/status.js
+  init_menu();
+  init_state();
+  init_speech();
+  init_quests();
+
+  // src/ui/settings.js
+  init_menu();
+  init_state();
+  init_context();
+  init_speech();
+  init_synth();
+  init_context();
+  init_sounds();
+  function apply(s) {
+    setMasterVolume(s.masterVol);
+    setSpeechVolume(s.speechVol);
+    getMusicBus().gain.value = s.musicVol;
+    getSfxBus().gain.value = s.sfxVol;
+    configureSpeech({ rate: s.speechRate, pitch: s.speechPitch, voiceURI: s.speechVoice });
+    setPreBlip(s.preBlip);
+    saveSettings();
+  }
+  function adj(key, delta, min, max, after) {
+    const s = getState().settings;
+    s[key] = Math.max(min, Math.min(max, +(s[key] + delta).toFixed(2)));
+    apply(s);
+    after && after();
+  }
+  function toggle(key) {
+    const s = getState().settings;
+    s[key] = !s[key];
+    apply(s);
+  }
+  function pct(v) {
+    return Math.round(v * 100) + "%";
+  }
+  function generalSettings() {
+    const s = getState().settings;
+    const items = [
+      {
+        label: `Menu wrapping: ${s.menuWrap !== false ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("menuWrap");
+          playSound(SOUNDS.select, { out: getSfxBus() });
+          reopen(generalSettings);
+        }
+      },
+      {
+        label: `Pre-speech blip: ${s.preBlip ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("preBlip");
+          playSound(SOUNDS.blip, { out: getSfxBus() });
+          reopen(generalSettings);
+        }
+      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "General", items });
+  }
+  function menusSettings() {
+    const s = getState().settings;
+    const items = [
+      {
+        label: `Menu wrapping: ${s.menuWrap !== false ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("menuWrap");
+          playSound(SOUNDS.select, { out: getSfxBus() });
+          reopen(menusSettings);
+        }
+      },
+      {
+        label: `Pre-speech blip: ${s.preBlip ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("preBlip");
+          playSound(SOUNDS.blip, { out: getSfxBus() });
+          reopen(menusSettings);
+        }
+      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "Menus", items });
+  }
+  function soundSettings() {
+    const s = getState().settings;
+    const items = [
+      {
+        label: `Master volume: ${pct(s.masterVol)}`,
+        k: "tap to adjust",
+        onSelect: () => {
+          adj("masterVol", 0.1, 0, 1, () => playSound(SOUNDS.blip, { out: getSfxBus() }));
+          reopen(soundSettings);
+        }
+      },
+      {
+        label: `Music volume: ${pct(s.musicVol)}`,
+        k: "tap to adjust",
+        onSelect: () => {
+          adj("musicVol", 0.1, 0, 1);
+          reopen(soundSettings);
+        }
+      },
+      {
+        label: `Sound effects: ${pct(s.sfxVol)}`,
+        k: "tap to adjust",
+        onSelect: () => {
+          adj("sfxVol", 0.1, 0, 1, () => playSound(SOUNDS.select, { out: getSfxBus() }));
+          reopen(soundSettings);
+        }
+      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "Sound", items });
+  }
+  function speechSettings() {
+    const s = getState().settings;
+    const items = [
+      {
+        label: `Speech volume: ${pct(s.speechVol)}`,
+        k: "tap to adjust",
+        onSelect: () => {
+          adj("speechVol", 0.1, 0, 1, () => say("Hello.", { blip: false }));
+          reopen(speechSettings);
+        }
+      },
+      {
+        label: `Speech rate: ${s.speechRate.toFixed(2)}\xD7`,
+        k: "tap to adjust",
+        onSelect: () => {
+          adj("speechRate", 0.1, 0.5, 2, () => say("This is how I sound.", { blip: false }));
+          reopen(speechSettings);
+        }
+      },
+      {
+        label: `Speech pitch: ${s.speechPitch.toFixed(2)}`,
+        k: "tap to adjust",
+        onSelect: () => {
+          adj("speechPitch", 0.1, 0.5, 2, () => say("Testing pitch.", { blip: false }));
+          reopen(speechSettings);
+        }
+      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "Speech", items });
+  }
+  function settingsMenu(onBack) {
+    const items = [
+      { label: "General", onSelect: () => {
+        closeTop();
+        generalSettings();
+      } },
+      { label: "Menus", onSelect: () => {
+        closeTop();
+        menusSettings();
+      } },
+      { label: "Sound", onSelect: () => {
+        closeTop();
+        soundSettings();
+      } },
+      { label: "Speech", onSelect: () => {
+        closeTop();
+        speechSettings();
+      } },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        onBack && onBack();
+      } }
+    ];
+    openMenu({ title: "Settings", items });
+  }
+  function reopen(subMenu) {
+    closeTop();
+    subMenu();
+  }
+
+  // src/ui/status.js
+  function statusMenu() {
+    const p = getPlayer();
+    const s = getState();
+    const xp = xpToNext(p.xp);
+    const items = [
+      { label: "\u{1F392} Inventory", k: Object.values(getInventory()).reduce((a, b) => a + b, 0) + " items", onSelect: inventoryMenu },
+      { label: "\u{1F4DC} Current Quest", onSelect: questMenu },
+      { label: "\u2B50 Skills", onSelect: skillsMenu },
+      { label: "\u2699\uFE0F Upgrades", onSelect: upgradesMenu },
+      { label: "\u{1F52C} Research", onSelect: researchMenu },
+      { label: "\u{1F465} Staff", onSelect: employeesMenu },
+      { label: "\u{1F4CB} Contracts", onSelect: contractsMenu },
+      { label: "\u{1F3C6} Achievements", onSelect: achievementsMenu },
+      { label: "\u{1F5FA}\uFE0F Fast Travel", onSelect: travelMenu },
+      { label: "\u{1F634} Rest", onSelect: restMenu },
+      { label: "\u{1F4FB} Radio", onSelect: radioMenu },
+      { label: "\u2709\uFE0F Mail", onSelect: mailMenu },
+      { label: "\u{1F4BE} Save Game", onSelect: () => {
+        saveGame();
+        say("Game saved.", { blip: "success" });
+      } },
+      { label: "\u2699 Settings", onSelect: () => settingsMenu(statusMenu) },
+      { label: "\u{1F3E0} Return to Main Menu", onSelect: confirmQuit },
+      { label: "\u2190 Resume", onSelect: closeTop }
+    ];
+    openMenu({
+      title: `${p.jobTitle} \xB7 Level ${p.level}`,
+      subtitle: `\u{1F4B0}${p.money}\xA2  \xB7  \u26A1${Math.round(s.vitals.energy)}  \xB7  \u{1F60A}${Math.round(p.morale)}`,
+      items,
+      renderFooter: () => questStatus()
+    });
+  }
+  function questMenu() {
+    say(questStatus(), { blip: "blip" });
+    openMenu({ title: "Quest", items: [
+      { label: questStatus() },
+      { label: "\u2190 Back", onSelect: statusMenu }
+    ] });
+  }
+  function confirmQuit() {
+    openMenu({
+      title: "Return to main menu?",
+      subtitle: "Your progress is saved automatically.",
+      items: [
+        { label: "Save and return", onSelect: () => {
+          saveGame();
+          closeAll();
+          mainMenu();
+        } },
+        { label: "Cancel", onSelect: closeTop }
+      ]
+    });
+  }
+  function inventoryMenu() {
+    const inv = getInventory();
+    const entries = Object.entries(inv).filter(([id, n]) => n > 0);
+    if (!entries.length) say("Your inventory is empty.", { blip: "blip" });
+    const items = entries.map(([id, n]) => {
+      const def = ITEMS[id] || INTERMEDIATES[id] || {};
+      const val = ITEMS[id]?.value;
+      return {
+        label: `${itemIcon(id)} ${n}\xD7 ${itemLabel(id)}`,
+        k: val ? `${val}\xA2` : isIntermediate(id) ? "intermediate" : "",
+        onSelect: () => {
+          let extra = "";
+          if (def.cat === "food") extra = ` Eaten: restores ${def.energy || 0} energy.`;
+          if (def.cat === "product" || isIntermediate(id)) extra = ` Value: ${val || 0} coins.`;
+          say(`${n} ${itemLabel(id)}. ${def.desc || ""}${extra}`, { blip: "blip" });
+        }
+      };
+    });
+    const foods = entries.filter(([id]) => ITEMS[id]?.cat === "food");
+    if (foods.length) {
+      items.push({ label: "\u2014 Consume \u2014", disabled: true, onSelect() {
+      } });
+      foods.forEach(([id, n]) => items.push({
+        label: `Eat ${itemLabel(id)}`,
+        onSelect: () => {
+          const f = ITEMS[id];
+          const s = getState();
+          if ((s.inventory[id] || 0) > 0) {
+            s.inventory[id]--;
+            if (s.inventory[id] <= 0) delete s.inventory[id];
+            s.vitals.energy = Math.min(100, s.vitals.energy + (f.energy || 0));
+            s.player.morale = Math.min(100, s.player.morale + (f.morale || 0));
+            say(`Ate ${f.name}. ${f.energy ? `+${f.energy} energy.` : ""}${f.morale ? ` Morale ${f.morale > 0 ? "+" : ""}${f.morale}.` : ""}`, { blip: "positive" });
+            inventoryMenu();
+          }
+        }
+      }));
+    }
+    items.push({ label: "\u2190 Back", onSelect: statusMenu });
+    openMenu({ title: "Inventory", subtitle: `${getPlayer().money}\xA2`, items });
+  }
+
+  // src/systems/time.js
+  init_state();
+  init_events();
+  init_speech();
+  init_sounds();
+  init_synth();
+  init_context();
+
+  // src/data/events.js
+  var EVENTS = [
+    {
+      id: "surprise_inspection",
+      weight: 3,
+      minLevel: 1,
+      condition: (s) => s.stats.crafted && Object.values(s.stats.crafted).reduce((a, b) => a + b, 0) > 3,
+      apply(s) {
+        s.player.morale = Math.max(0, s.player.morale - 8);
+        return { message: "Surprise health inspection! You rush to tidy up, losing a little morale.", sound: "phone" };
+      }
+    },
+    {
+      id: "snack_thief",
+      weight: 4,
+      minLevel: 1,
+      apply(s) {
+        const products = Object.keys(s.inventory).filter((k) => !k.startsWith("_") && s.inventory[k] > 0);
+        if (!products.length) return { message: "A intern eyes your snacks, but you have nothing to steal.", sound: "blip" };
+        const id = products[Math.floor(Math.random() * products.length)];
+        const n = Math.min(s.inventory[id], 1 + Math.floor(Math.random() * 2));
+        s.inventory[id] -= n;
+        if (s.inventory[id] <= 0) delete s.inventory[id];
+        return { message: `A sneaky intern swiped ${n} ${id.replace("_", " ")}!`, sound: "error" };
+      }
+    },
+    {
+      id: "tip_jar",
+      weight: 3,
+      minLevel: 1,
+      apply(s) {
+        const tip = 10 + Math.floor(Math.random() * 30);
+        s.player.money += tip;
+        return { message: `A happy customer left a ${tip}-coin tip in the jar!`, sound: "coin" };
+      }
+    },
+    {
+      id: "found_change",
+      weight: 5,
+      minLevel: 1,
+      apply(s) {
+        const c = 2 + Math.floor(Math.random() * 8);
+        s.player.money += c;
+        return { message: `You found ${c} coins behind the vending machine.`, sound: "coin" };
+      }
+    },
+    {
+      id: "motivational_speech",
+      weight: 3,
+      minLevel: 2,
+      apply(s) {
+        s.player.morale = Math.min(100, s.player.morale + 15);
+        return { message: "Gus gives a rousing speech about crunch. Morale rises!", sound: "positive" };
+      }
+    },
+    {
+      id: "broken_machine",
+      weight: 4,
+      minLevel: 2,
+      condition: (s) => s.stats.steps > 30,
+      choices: [
+        { label: "Fix it yourself (-5 energy)", effect(s) {
+          s.vitals.energy = Math.max(0, s.vitals.energy - 5);
+          s.player.money += 20;
+          return "You bang the machine with a wrench. It works, and you find 20 coins in the housing.";
+        } },
+        { label: "Call maintenance (-30 coins)", effect(s) {
+          s.player.money -= 30;
+          return "Maintenance arrives and fixes it. 30 coins lighter.";
+        } },
+        { label: "Ignore it", effect(s) {
+          s.player.morale = Math.max(0, s.player.morale - 10);
+          return "The machine clanks sadly. Morale drops.";
+        } }
+      ],
+      messagePrompt: "A machine is making a funny noise."
+    },
+    {
+      id: "catering_order",
+      weight: 3,
+      minLevel: 3,
+      condition: (s) => s.player.level >= 3,
+      apply(s) {
+        const bonus = 60 + s.player.level * 20;
+        s.player.money += bonus;
+        return { message: `A local office placed a surprise catering order! +${bonus} coins.`, sound: "cash" };
+      }
+    },
+    {
+      id: "viral_tiktok",
+      weight: 2,
+      minLevel: 4,
+      apply(s) {
+        const bonus = 120 + Math.floor(Math.random() * 120);
+        s.player.money += bonus;
+        return { message: `A video of your snacks went viral! Sales spike for +${bonus} coins.`, sound: "levelup" };
+      }
+    },
+    {
+      id: "sleep_well",
+      weight: 4,
+      minLevel: 1,
+      apply(s) {
+        s.vitals.energy = Math.min(100, s.vitals.energy + 25);
+        return { message: "You snuck a quick power nap. Energy restored!", sound: "blip" };
+      }
+    },
+    {
+      id: "free_sample_day",
+      weight: 3,
+      minLevel: 1,
+      apply(s) {
+        s.player.morale = Math.min(100, s.player.morale + 10);
+        s.vitals.energy = Math.min(100, s.vitals.energy + 10);
+        return { message: "Free sample day in the cafeteria! You grab a snack. Energy and morale up.", sound: "crunch_big" };
+      }
+    },
+    {
+      id: "paycheck",
+      weight: 1,
+      minLevel: 2,
+      condition: (s) => (s.stats.shifts || 0) >= 1,
+      apply(s) {
+        const pay = 50 + s.player.level * 25;
+        s.player.money += pay;
+        return { message: `Paycheck deposited: ${pay} coins. Keep up the good work!`, sound: "cash" };
+      }
+    }
+  ];
+  function pickEvent(state2, rng = Math.random) {
+    const eligible = EVENTS.filter((e) => (e.minLevel || 1) <= state2.player.level && (!e.condition || e.condition(state2)));
+    if (!eligible.length) return null;
+    const total = eligible.reduce((a, e) => a + (e.weight || 1), 0);
+    let r = rng() * total;
+    for (const e of eligible) {
+      r -= e.weight || 1;
+      if (r <= 0) return e;
+    }
+    return eligible[0];
+  }
+
+  // src/systems/time.js
+  var interval = null;
+  function startTime() {
+    if (interval) clearInterval(interval);
+    interval = setInterval(tick, 1e3);
+  }
+  function tick() {
+    const s = getState();
+    s.time.elapsed += 1;
+    s.stats.playtime += 1;
+    if (s.time.elapsed % 12 === 0) {
+      addEnergy(-1);
+      if (s.vitals.energy < 20) addMorale(-1);
+    }
+    if (s.vitals.energy <= 0 && s.time.elapsed % 8 === 0) {
+      addMorale(-2);
+      if (s.time.elapsed % 24 === 0) say("You are exhausted. Find food or take a break.", { blip: "error" });
+    }
+    const shiftLen = s.time.shiftLength || 180;
+    if (s.time.elapsed > 0 && s.time.elapsed % shiftLen === 0) {
+      endShift();
+    }
+    if (s.time.elapsed > 20 && s.time.elapsed % 45 === 0 && Math.random() < 0.7) {
+      maybeFireEvent();
+    }
+  }
+  function endShift() {
+    const s = getState();
+    s.stats.shifts = (s.stats.shifts || 0) + 1;
+    const basePay = 20 + s.player.level * 10;
+    addMoney(basePay);
+    addEnergy(60);
+    addMorale(15);
+    playSound(SOUNDS.cash, { out: getSfxBus() });
+    say(`End of shift. You earned a ${basePay}-coin paycheck. Energy restored.`, { blip: "cash" });
+    for (const e of Object.values(s.employees)) e.shifts = (e.shifts || 0) + 1;
+    saveGame();
+    emit(EVT.SHIFT, { shift: s.stats.shifts });
+  }
+  function maybeFireEvent() {
+    const s = getState();
+    const ev = pickEvent(s);
+    if (!ev) return;
+    if (ev.choices) {
+      Promise.resolve().then(() => (init_menu(), menu_exports)).then(({ openMenu: openMenu2, closeTop: closeTop2 }) => {
+        openMenu2({
+          title: "Event!",
+          subtitle: ev.messagePrompt || "Something happened.",
+          items: ev.choices.map((c) => ({
+            label: c.label,
+            onSelect: () => {
+              const msg = c.effect(s);
+              closeTop2();
+              say(msg, { blip: "blip" });
+              emit(EVT.EVENT, { id: ev.id });
+            }
+          }))
+        });
+      });
+    } else {
+      const r = ev.apply(s);
+      if (r?.message) {
+        playSound(SOUNDS[r.sound || "blip"], { out: getSfxBus() });
+        say(r.message, { blip: r.sound || "blip" });
+        emit(EVT.EVENT, { id: ev.id, message: r.message });
+      }
+    }
+  }
+
+  // src/game.js
+  var beacons = [];
+  var raf2 = null;
+  function startGame() {
+    buildNavMesh();
+    closeAll();
+    cancelSpeech();
+    clearActions();
+    initHud();
+    initQuests();
+    initResearch();
+    startTime();
+    startAutosave();
+    bindActions();
+    startRoomAudio();
+    spawnBeacons();
+    checkAchievements();
+    const p = getPlayer();
+    const room = currentRoom();
+    drawRadar();
+    if (!getFlag("hired")) {
+      setFlag("hired", true);
+      say("Welcome to your first day at Cheetos Co. You are in the " + room.name + ". " + room.description + " Swipe in any direction to move. Single tap to interact. Swipe left to go back. Linda in HR wants to meet you.", { blip: "ding" });
+    } else {
+      say("Welcome back. You are in the " + room.name + ". " + questStatus(), { blip: "blip" });
+    }
+    if (raf2) cancelAnimationFrame(raf2);
+    const loop = () => {
+      const pl = getPlayer();
+      const listener = { x: pl.x, y: pl.y, facing: pl.facing };
+      for (const b of beacons) b.update(listener);
+      raf2 = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+  function startRoomAudio() {
+    const room = currentRoom();
+    startTrack(TRACKS[room?.track] || TRACKS.calm);
+    if (room?.ambience && SOUNDS[room.ambience]) {
+      const amb = new Beacon(
+        SOUNDS[room.ambience],
+        () => ({ x: getPlayer().x, y: getPlayer().y }),
+        { interval: 3500, jitter: 1500, range: 4, volume: 0.45 }
+      );
+      amb.start();
+      beacons.push(amb);
+    }
+  }
+  function spawnBeacons() {
+    beacons = beacons.filter((b) => {
+      if (b._object) {
+        b.stop();
+        return false;
+      }
+      return true;
+    });
+    for (const obj of OBJECTS) {
+      let sound = null, interval2 = 3e3, volume = 0.7;
+      if (obj.type === "npc") {
+        const def = NPCS[obj.npc] || {};
+        sound = SOUNDS[def.cue] || SOUNDS.npc_chatter;
+        interval2 = def.interval || 4e3;
+      } else if (obj.type === "station") {
+        sound = SOUNDS[obj.sound] || SOUNDS.machine_hum;
+        interval2 = 2200;
+        volume = 0.55;
+      } else if (obj.type === "container") {
+        sound = SOUNDS[obj.sound] || SOUNDS.pickup;
+        interval2 = 5e3;
+        volume = 0.4;
+      } else if (obj.type === "shop") {
+        sound = SOUNDS[obj.sound] || SOUNDS.coin;
+        interval2 = 4500;
+        volume = 0.4;
+      }
+      if (!sound) continue;
+      const b = new Beacon(sound, () => obj, { interval: interval2, jitter: 1200, range: 7, volume });
+      b._object = true;
+      b.start();
+      beacons.push(b);
+    }
+  }
+  function bindActions() {
+    clearActions();
+    onAction("up", () => doMove(3));
+    onAction("right", () => doMove(0));
+    onAction("down", () => doMove(1));
+    onAction("left", () => doMove(2));
+    onAction("swipe-up", () => doMove(3));
+    onAction("swipe-right", () => doMove(0));
+    onAction("swipe-down", () => doMove(1));
+    onAction("swipe-left", () => doMove(2));
+    onAction("interact", interact);
+    onAction("actionA", interact);
+    onAction("tap", interact);
+    onAction("double-tap", interact);
+    onAction("back", back2);
+    onAction("scan", scanAround);
+    onAction("look", scanAround);
+    onAction("menu", openStatus);
+    onAction("inventory", openInventory);
+  }
+  function doMove(dir) {
+    if (isMenuOpen() || isInDialogue()) return;
+    if (isTimingActive()) return;
+    move2(dir);
+  }
+  function interact() {
+    if (tryHitTiming()) return;
+    if (isMenuOpen()) return;
+    if (isInDialogue()) {
+      endDialogue();
+      return;
+    }
+    const obj = objectInFront();
+    if (!obj) {
+      const p = getPlayer();
+      const here = OBJECTS.find((o) => o.x === p.x && o.y === p.y);
+      if (here) return useObject(here);
+      say("Nothing to interact with here.", { blip: "error" });
+      playSound(SOUNDS.error, { out: getSfxBus() });
+      return;
+    }
+    useObject(obj);
+  }
+  function useObject(obj) {
+    switch (obj.type) {
+      case "station":
+        playSound(SOUNDS.beep_machine, { out: getSfxBus() });
+        openStation(obj);
+        break;
+      case "npc":
+        getState().flags.met = getState().flags.met || {};
+        getState().flags.met[obj.npc] = true;
+        talkTo(obj.npc);
+        break;
+      case "container":
+        lootContainer(obj);
+        break;
+      case "shop":
+        playSound(SOUNDS.coin, { out: getSfxBus() });
+        if (obj.shop === "vending") vendingMenu();
+        else openShop(obj.shop);
+        break;
+      case "sign":
+        say(obj.text, { blip: "blip" });
+        caption(obj.text, 4e3);
+        break;
+      case "exit":
+        say(obj.text || "An exit.", { blip: "door_open" });
+        break;
+    }
+  }
+  function lootContainer(obj) {
+    const s = getState();
+    const now = Date.now();
+    const until = s.flags.containers[obj.id] || 0;
+    if (until > now) {
+      const secs = Math.ceil((until - now) / 1e3);
+      say(`${obj.label} is empty. Resupplies in ${secs} seconds.`, { blip: "error" });
+      return;
+    }
+    for (const [id, n] of Object.entries(obj.loot)) addItem(id, n);
+    s.flags.containers[obj.id] = now + (obj.respawn || 20) * 1e3;
+    const first = Object.entries(obj.loot)[0];
+    playSound(SOUNDS[obj.sound || "pickup"], { out: getSfxBus() });
+    const label = `Picked up ${first[1]} ${itemLabel(first[0])}.`;
+    say(label, { blip: "pickup" });
+    toast(label);
+    Promise.resolve().then(() => (init_events(), events_exports)).then(({ emit: emit2, EVT: EVT2 }) => emit2(EVT2.COLLECT, { id: first[0] }));
+    checkAchievements();
+  }
+  function scanAround() {
+    if (isMenuOpen() || isInDialogue()) return;
+    const { room, nearby } = scan();
+    if (!nearby.length) {
+      say(`You are in the ${room.name}. Nothing close by.`, { blip: "blip" });
+      return;
+    }
+    const desc = nearby.slice(0, 6).map(({ o, d }) => {
+      const dir = directionTo(o);
+      const dist = d < 1.5 ? "right here" : d < 3 ? "nearby" : "a few steps away";
+      if (o.type === "npc") return `${NPCS[o.npc]?.name || "someone"}, ${dir} ${dist}`;
+      if (o.type === "station") return `a ${o.label}, ${dir} ${dist}`;
+      if (o.type === "container") return `a ${o.label}, ${dir} ${dist}`;
+      if (o.type === "shop") return `a ${o.label || "shop"}, ${dir}`;
+      if (o.type === "sign") return `a sign, ${dir}`;
+      return "";
+    }).filter(Boolean).join("; ");
+    say(`You are in the ${room.name}. Nearby: ${desc}.`, { blip: "blip" });
+    const p = getPlayer();
+    nearby.slice(0, 4).forEach(({ o }, i) => setTimeout(() => playAt(SOUNDS.blip, o.x, o.y, { x: p.x, y: p.y, facing: p.facing }, { range: 8 }), i * 220));
+  }
+  function directionTo(o) {
+    const p = getPlayer();
+    const dx = o.x - p.x, dy = o.y - p.y;
+    const f = [[1, 0], [0, 1], [-1, 0], [0, -1]][p.facing];
+    const fx = dx * f[0] + dy * f[1];
+    const rx = dx * -f[1] + dy * f[0];
+    let a = Math.atan2(rx, fx);
+    if (a < 0) a += Math.PI * 2;
+    const idx = Math.round(a / (Math.PI * 2) * 8) % 8;
+    return ["ahead", "ahead-right", "right", "behind-right", "behind", "behind-left", "left", "ahead-left"][idx];
+  }
+  function back2() {
+    if (isMenuOpen()) {
+      closeTop();
+      return;
+    }
+    if (isInDialogue()) {
+      endDialogue();
+      return;
+    }
+    openStatus();
+  }
+  function openStatus() {
+    if (!isMenuOpen()) statusMenu();
+    else closeTop();
+  }
+  function openInventory() {
+    if (!isMenuOpen()) inventoryMenu();
+    else closeTop();
+  }
+  on(EVT.ENTER_ROOM, ({ room }) => {
+    if (room?.track && TRACKS[room.track]) startTrack(TRACKS[room.track]);
+    say(room.description, { blip: "door_open" });
+    checkAchievements();
+  });
+  on(EVT.CRAFT_DONE, () => {
+    saveGame();
+    checkAchievements();
+  });
+  on(EVT.SELL, () => {
+    saveGame();
+    checkAchievements();
+  });
+  on(EVT.LEVEL, () => checkAchievements());
+  on(EVT.QUEST, () => checkAchievements());
+  on(EVT.MOVE, () => checkAchievements());
+
+  // src/systems/audio-test.js
+  init_sounds();
+  init_synth();
+  init_context();
+  init_speech();
+  var delay = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function testSpeakers() {
+    playSound(SOUNDS.test_left, { out: getSfxBus() });
+    await delay(600);
+    say("Left", { blip: false });
+    await delay(900);
+    playSound(SOUNDS.test_center, { out: getSfxBus() });
+    await delay(600);
+    say("Center", { blip: false });
+    await delay(900);
+    playSound(SOUNDS.test_right, { out: getSfxBus() });
+    await delay(600);
+    say("Right", { blip: false });
+    await delay(1200);
+  }
+
+  // src/main.js
+  var booted = false;
+  async function boot() {
+    if (booted) return;
+    booted = true;
+    await initAudio();
+    initInput();
+    initMenus();
+    applySettings(getState().settings);
+    hideGate();
+    setTimeout(mainMenu, 300);
+  }
+  function hideGate() {
+    const g = document.getElementById("gate");
+    if (g) {
+      g.style.transition = "opacity .6s";
+      g.style.opacity = "0";
+      setTimeout(() => g.remove(), 700);
+    }
+  }
+  function applySettings(s) {
+    setMasterVolume(s.masterVol ?? 0.9);
+    setSpeechVolume(s.speechVol ?? 1);
+    const m = getMusicBus();
+    if (m) m.gain.value = s.musicVol ?? 0.55;
+    const sx = getSfxBus();
+    if (sx) sx.gain.value = s.sfxVol ?? 1;
+    configureSpeech({ rate: s.speechRate ?? 1, pitch: s.speechPitch ?? 1, voiceURI: s.speechVoice ?? null });
+    setPreBlip(s.preBlip !== false);
+  }
+  function mainMenu() {
+    clearActions();
+    stopTrack();
+    closeAll();
+    cancelSpeech();
+    const canLoad = hasSave();
+    const items = [
+      { label: "\u25B6  Start New Game", onSelect: () => {
+        replaceState(newGame());
+        startGame();
+      } },
+      {
+        label: "\u21BB  Continue / Load Game",
+        disabled: !canLoad,
+        k: canLoad ? "" : "no save",
+        onSelect: () => {
+          if (loadGame()) startGame();
+          else say("No save found.", { blip: "error" });
+        }
+      },
+      { label: "\u{1F50A}  Test Speakers", onSelect: () => testSpeakers().then(mainMenu) },
+      { label: "\u2699  Settings", onSelect: () => settingsMenu(mainMenu) },
+      { label: "\u2753  How to Play", onSelect: howToPlay }
+    ];
+    openMenu({
+      title: "CHEETOS CO.",
+      subtitle: "An audio adventure",
+      items,
+      noSound: true
+    });
+    startTrack(TRACKS.lobby);
+    say("Welcome to Cheetos Company. Swipe up and down to browse. Double-tap to select. Swipe left to go back.", { blip: "blip" });
+  }
+  function howToPlay() {
+    openMenu({
+      title: "How to Play",
+      subtitle: "Put on headphones for stereo sound",
+      items: [
+        { label: "Move: Swipe in any direction, or use arrow keys." },
+        { label: "Interact: Single tap or press Enter." },
+        { label: "Scan room: Hold Tab or long-press the screen." },
+        { label: "Back: Swipe left, or press Escape." },
+        { label: "Menu: Press M. Inventory: Press I." },
+        { label: "Sounds come from the direction of their source. Turn to face them!" },
+        { label: "Walk into a station to craft. Walk into a person to talk. Face crates to loot." },
+        { label: "Your progress saves automatically every 15 seconds." },
+        { label: "\u2190 Back", onSelect: mainMenu }
+      ]
+    });
+  }
+  var gate = document.getElementById("gate");
+  var booting = false;
+  var booted_ok = false;
+  async function kick(e) {
+    if (booting || booted_ok) return;
+    booting = true;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    try {
+      await boot();
+      booted_ok = true;
+      if (gate) gate.classList.add("hidden");
+      document.removeEventListener("touchstart", kick);
+      document.removeEventListener("click", kick);
+      window.removeEventListener("keydown", kick);
+    } catch (err) {
+      console.error("Boot failed:", err);
+      booting = false;
+      say("Error starting game: " + (err.message || "Unknown error") + ". Please try again.", { interrupt: true });
+    }
+  }
+  document.addEventListener("touchstart", kick, { passive: false });
+  document.addEventListener("click", kick);
+  window.addEventListener("keydown", kick);
+})();
+
