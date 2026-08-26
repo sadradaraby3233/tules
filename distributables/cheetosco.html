@@ -595,21 +595,95 @@ body.touch .touchpad{display:block;}
       SOUNDS = {
         // ---- UI ----
         blip: [
-          tone(880, 0.06, { vol: 0.18, attack: 2e-3, release: 0.05 })
+          // Soft glass tap with shimmer tail
+          tone(1200, 0.04, { vol: 0.15, attack: 1e-3, release: 0.03, type: "sine" }),
+          tone(1800, 0.06, { vol: 0.06, delay: 5e-3, attack: 1e-3, release: 0.05 }),
+          tone(2400, 0.08, { vol: 0.03, delay: 0.01, type: "sine", release: 0.07 })
         ],
         focus: [
-          osc({ freq: 660, freq2: 990, dur: 0.09, type: "triangle", vol: 0.16, attack: 4e-3, release: 0.06 })
+          // Crystalline upward sweep — like a tiny chime
+          osc({
+            freq: 660,
+            freq2: 1320,
+            dur: 0.1,
+            type: "sine",
+            vol: 0.14,
+            attack: 2e-3,
+            release: 0.08,
+            sweep: 0.3
+          }),
+          osc({
+            freq: 1980,
+            freq2: 2640,
+            dur: 0.12,
+            type: "sine",
+            vol: 0.05,
+            delay: 0.01,
+            attack: 3e-3,
+            release: 0.1,
+            sweep: 0.4
+          }),
+          osc({
+            freq: 3960,
+            dur: 0.06,
+            type: "sine",
+            vol: 0.02,
+            delay: 0.03,
+            attack: 1e-3,
+            release: 0.05
+          })
         ],
         select: [
-          osc({ freq: 523, dur: 0.08, type: "triangle", vol: 0.22, attack: 4e-3, release: 0.07 }),
-          osc({ freq: 784, dur: 0.11, type: "triangle", vol: 0.18, delay: 0.04, attack: 4e-3, release: 0.08 })
+          // Confident dual-tone click with harmonic sparkle
+          osc({ freq: 523, dur: 0.06, type: "triangle", vol: 0.22, attack: 2e-3, release: 0.04 }),
+          osc({ freq: 784, dur: 0.08, type: "sine", vol: 0.18, delay: 0.035, attack: 2e-3, release: 0.06 }),
+          osc({ freq: 1568, dur: 0.06, type: "sine", vol: 0.06, delay: 0.05, attack: 1e-3, release: 0.05 }),
+          osc({ freq: 1047, dur: 0.12, type: "sine", vol: 0.04, delay: 0.04, release: 0.1 })
         ],
         back: [
-          osc({ freq: 440, freq2: 330, dur: 0.1, type: "triangle", vol: 0.2, attack: 4e-3, release: 0.08 })
+          // Descending glass slide — like a key release
+          osc({
+            freq: 880,
+            freq2: 440,
+            dur: 0.12,
+            type: "sine",
+            vol: 0.18,
+            attack: 2e-3,
+            release: 0.1,
+            sweep: 0.7
+          }),
+          osc({
+            freq: 1320,
+            freq2: 660,
+            dur: 0.1,
+            type: "sine",
+            vol: 0.05,
+            delay: 0.01,
+            attack: 2e-3,
+            release: 0.08,
+            sweep: 0.6
+          })
         ],
         error: [
-          osc({ freq: 200, freq2: 150, dur: 0.18, type: "sawtooth", vol: 0.18, filter: { type: "lowpass", freq: 1200, q: 4 } }),
-          noise({ dur: 0.05, vol: 0.05, filter: { type: "bandpass", freq: 400 } })
+          // Low buzz with metallic edge
+          osc({
+            freq: 200,
+            freq2: 140,
+            dur: 0.22,
+            type: "sawtooth",
+            vol: 0.16,
+            filter: { type: "lowpass", freq: 900, q: 5 }
+          }),
+          osc({
+            freq: 300,
+            freq2: 180,
+            dur: 0.18,
+            type: "square",
+            vol: 0.04,
+            delay: 0.04,
+            filter: { type: "bandpass", freq: 600, q: 3 }
+          }),
+          noise({ dur: 0.06, vol: 0.04, filter: { type: "bandpass", freq: 400 } })
         ],
         success: [
           tone(523, 0.1, { vol: 0.2 }),
@@ -882,244 +956,6 @@ body.touch .touchpad{display:block;}
       voicesLoaded = false;
       if ("speechSynthesis" in window) initVoices();
       pumping = false;
-    }
-  });
-
-  // src/ui/menu.js
-  var menu_exports = {};
-  __export(menu_exports, {
-    closeAll: () => closeAll,
-    closeTop: () => closeTop,
-    initMenus: () => initMenus,
-    isMenuOpen: () => isMenuOpen,
-    openChoiceMenu: () => openChoiceMenu,
-    openMenu: () => openMenu
-  });
-  function initMenus() {
-    menuEl = document.getElementById("menu-root");
-    if (!menuEl) {
-      menuEl = document.createElement("div");
-      menuEl.id = "menu-root";
-      menuEl.style.cssText = "position:fixed;inset:0;z-index:39;pointer-events:none;";
-      document.body.appendChild(menuEl);
-    }
-    document.addEventListener("keydown", (e) => {
-      if (!stack.length) return;
-      if (e.code === "ArrowUp" || e.code === "KeyW") {
-        e.preventDefault();
-        move(-1);
-      } else if (e.code === "ArrowDown" || e.code === "KeyS") {
-        e.preventDefault();
-        move(1);
-      } else if (e.code === "Enter" || e.code === "Space" || e.code === "KeyE" || e.code === "KeyJ") {
-        e.preventDefault();
-        select();
-      } else if (e.code === "Escape" || e.code === "KeyK" || e.code === "KeyZ") {
-        e.preventDefault();
-        closeTop();
-      } else if (e.code === "Home") {
-        e.preventDefault();
-        goFirst();
-      } else if (e.code === "End") {
-        e.preventDefault();
-        goLast();
-      }
-    });
-  }
-  function onTouchStart(e) {
-    if (!stack.length) return;
-    const t = e.touches[0];
-    touchStartX = t.clientX;
-    touchStartY = t.clientY;
-    touchStartTime = Date.now();
-  }
-  function onTouchEnd(e) {
-    if (!stack.length) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    const dt = Date.now() - touchStartTime;
-    if (dt > SWIPE_MAX_TIME) return;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-    if (absDx > SWIPE_THRESHOLD || absDy > SWIPE_THRESHOLD) {
-      if (absDx > absDy) {
-        if (dx < 0) goFirst();
-        else goLast();
-      } else {
-        if (dy < 0) move(-1);
-        else move(1);
-      }
-      return;
-    }
-    const now = Date.now();
-    if (now - lastTapTime < DOUBLE_TAP_MAX_GAP) {
-      lastTapTime = 0;
-      select();
-    } else {
-      lastTapTime = now;
-      speakIndex(stack[stack.length - 1].index);
-    }
-  }
-  function isMenuOpen() {
-    return stack.length > 0;
-  }
-  function openMenu({ title, subtitle, items, onClose, renderFooter, noSound }) {
-    cancelSpeech();
-    const m = { title, subtitle, items, index: 0, onClose, renderFooter, custom: !!renderFooter };
-    stack.push(m);
-    if (!noSound) playSound(SOUNDS.focus, { out: getSfxBus() });
-    render();
-    speakIndex(0);
-    return m;
-  }
-  function openChoiceMenu(title, choices, onCancel) {
-    return openMenu({
-      title,
-      items: choices.map((c) => ({ label: c.label, onSelect: c.onSelect, disabled: c.disabled })),
-      onClose: onCancel
-    });
-  }
-  function closeTop() {
-    const top = stack.pop();
-    playSound(SOUNDS.back, { out: getSfxBus() });
-    cancelSpeech();
-    if (top?.onClose) {
-      try {
-        top.onClose();
-      } catch (e) {
-      }
-    }
-    render();
-    if (stack.length) speakIndex(stack[stack.length - 1].index);
-  }
-  function closeAll() {
-    stack = [];
-    render();
-    cancelSpeech();
-  }
-  function move(d) {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    let idx = top.index;
-    for (let attempt = 0; attempt < top.items.length; attempt++) {
-      idx = (idx + d + top.items.length) % top.items.length;
-      if (!top.items[idx].disabled) break;
-    }
-    top.index = idx;
-    render();
-    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
-    speakIndex(idx);
-  }
-  function goFirst() {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    for (let i = 0; i < top.items.length; i++) {
-      if (!top.items[i].disabled) {
-        top.index = i;
-        break;
-      }
-    }
-    render();
-    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
-    speakIndex(top.index);
-  }
-  function goLast() {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    for (let i = top.items.length - 1; i >= 0; i--) {
-      if (!top.items[i].disabled) {
-        top.index = i;
-        break;
-      }
-    }
-    render();
-    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
-    speakIndex(top.index);
-  }
-  function select() {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    const item = top.items[top.index];
-    if (!item || item.disabled) {
-      playSound(SOUNDS.error, { out: getSfxBus() });
-      return;
-    }
-    playSound(SOUNDS.select, { out: getSfxBus() });
-    cancelSpeech();
-    if (item.onSelect) item.onSelect(item);
-  }
-  function speakIndex(i) {
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    const item = top.items[i];
-    if (!item) return;
-    const label = typeof item.label === "string" ? item.label : item.text || "";
-    const pos = `${i + 1} of ${top.items.length}. `;
-    say(pos + label, { blip: "focus" });
-  }
-  function render() {
-    if (!stack.length) {
-      menuEl.innerHTML = "";
-      menuEl.style.pointerEvents = "none";
-      menuEl.classList.remove("open");
-      return;
-    }
-    menuEl.classList.add("open");
-    menuEl.style.pointerEvents = "auto";
-    const top = stack[stack.length - 1];
-    const itemsHtml = top.items.map((it, i) => {
-      const label = it.label || it.text || "";
-      const hint = it.k || it.hint || "";
-      const disabled = it.disabled ? "disabled" : "";
-      const focused = i === top.index ? "focused" : "";
-      const tag = it.tag ? `<span class="tag">${it.tag}</span>` : "";
-      return `<button class="mi ${focused}" data-i="${i}" ${disabled} aria-label="${label}">
-      <span class="lbl">${label}${tag}</span>
-      ${hint ? `<span class="k">${hint}</span>` : ""}
-    </button>`;
-    }).join("");
-    const foot = top.renderFooter ? `<div class="menu-foot">${top.renderFooter()}</div>` : "";
-    menuEl.innerHTML = `
-    <div class="menu open" role="dialog" aria-modal="true" aria-label="${top.title}">
-      <div class="menu-card">
-        <h2 class="menu-title">${top.title}</h2>
-        ${top.subtitle ? `<div class="menu-sub">${top.subtitle}</div>` : ""}
-        <div class="menu-list">${itemsHtml}</div>
-        ${foot}
-        <div class="menu-foot">Swipe up/down to browse. Double-tap to select. Tap to hear again.</div>
-      </div>
-    </div>`;
-    const menuOverlay = menuEl.querySelector(".menu");
-    if (menuOverlay) {
-      menuOverlay.addEventListener("touchstart", onTouchStart, { passive: true });
-      menuOverlay.addEventListener("touchend", onTouchEnd, { passive: false });
-    }
-    menuEl.querySelectorAll(".mi").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const i = parseInt(btn.dataset.i, 10);
-        top.index = i;
-        select();
-      });
-    });
-  }
-  var menuEl, stack, touchStartX, touchStartY, touchStartTime, lastTapTime, SWIPE_THRESHOLD, SWIPE_MAX_TIME, DOUBLE_TAP_MAX_GAP;
-  var init_menu = __esm({
-    "src/ui/menu.js"() {
-      init_speech();
-      init_synth();
-      init_context();
-      init_sounds();
-      menuEl = null;
-      stack = [];
-      touchStartX = 0;
-      touchStartY = 0;
-      touchStartTime = 0;
-      lastTapTime = 0;
-      SWIPE_THRESHOLD = 40;
-      SWIPE_MAX_TIME = 500;
-      DOUBLE_TAP_MAX_GAP = 350;
     }
   });
 
@@ -1656,12 +1492,13 @@ body.touch .touchpad{display:block;}
         musicVol: 0.45,
         sfxVol: 1,
         preBlip: true,
+        menuWrap: true,
         reduceMotion: false,
         showRadar: true,
         autosave: true
       }, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"));
     } catch {
-      return { speechRate: 1, speechPitch: 1, masterVol: 0.9, speechVol: 1, musicVol: 0.45, sfxVol: 1, preBlip: true };
+      return { speechRate: 1, speechPitch: 1, masterVol: 0.9, speechVol: 1, musicVol: 0.45, sfxVol: 1, preBlip: true, menuWrap: true };
     }
   }
   function startAutosave() {
@@ -1696,6 +1533,247 @@ body.touch .touchpad{display:block;}
           return false;
         }
       };
+    }
+  });
+
+  // src/ui/menu.js
+  var menu_exports = {};
+  __export(menu_exports, {
+    closeAll: () => closeAll,
+    closeTop: () => closeTop,
+    initMenus: () => initMenus,
+    isMenuOpen: () => isMenuOpen,
+    openChoiceMenu: () => openChoiceMenu,
+    openMenu: () => openMenu
+  });
+  function initMenus() {
+    menuEl = document.getElementById("menu-root");
+    if (!menuEl) {
+      menuEl = document.createElement("div");
+      menuEl.id = "menu-root";
+      menuEl.style.cssText = "position:fixed;inset:0;z-index:39;pointer-events:none;";
+      document.body.appendChild(menuEl);
+    }
+    document.addEventListener("keydown", (e) => {
+      if (!stack.length) return;
+      if (e.code === "ArrowUp" || e.code === "KeyW") {
+        e.preventDefault();
+        move(-1);
+      } else if (e.code === "ArrowDown" || e.code === "KeyS") {
+        e.preventDefault();
+        move(1);
+      } else if (e.code === "Enter" || e.code === "Space" || e.code === "KeyE" || e.code === "KeyJ") {
+        e.preventDefault();
+        select();
+      } else if (e.code === "Escape" || e.code === "KeyK" || e.code === "KeyZ") {
+        e.preventDefault();
+        closeTop();
+      } else if (e.code === "Home") {
+        e.preventDefault();
+        goFirst();
+      } else if (e.code === "End") {
+        e.preventDefault();
+        goLast();
+      }
+    });
+  }
+  function onTouchStart(e) {
+    if (!stack.length) return;
+    const t = e.touches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchStartTime = Date.now();
+  }
+  function onTouchEnd(e) {
+    if (!stack.length) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+    const dt = Date.now() - touchStartTime;
+    if (dt > SWIPE_MAX_TIME) return;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    if (absDx > SWIPE_THRESHOLD || absDy > SWIPE_THRESHOLD) {
+      if (absDx > absDy) {
+        if (dx < 0) goFirst();
+        else goLast();
+      } else {
+        if (dy < 0) move(-1);
+        else move(1);
+      }
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTapTime < DOUBLE_TAP_MAX_GAP) {
+      lastTapTime = 0;
+      select();
+    } else {
+      lastTapTime = now;
+      speakIndex(stack[stack.length - 1].index);
+    }
+  }
+  function isMenuOpen() {
+    return stack.length > 0;
+  }
+  function openMenu({ title, subtitle, items, onClose, renderFooter, noSound }) {
+    cancelSpeech();
+    const m = { title, subtitle, items, index: 0, onClose, renderFooter, custom: !!renderFooter };
+    stack.push(m);
+    if (!noSound) playSound(SOUNDS.focus, { out: getSfxBus() });
+    render();
+    speakIndex(0);
+    return m;
+  }
+  function openChoiceMenu(title, choices, onCancel) {
+    return openMenu({
+      title,
+      items: choices.map((c) => ({ label: c.label, onSelect: c.onSelect, disabled: c.disabled })),
+      onClose: onCancel
+    });
+  }
+  function closeTop() {
+    const top = stack.pop();
+    playSound(SOUNDS.back, { out: getSfxBus() });
+    cancelSpeech();
+    if (top?.onClose) {
+      try {
+        top.onClose();
+      } catch (e) {
+      }
+    }
+    render();
+    if (stack.length) speakIndex(stack[stack.length - 1].index);
+  }
+  function closeAll() {
+    stack = [];
+    render();
+    cancelSpeech();
+  }
+  function move(d) {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    let idx = top.index;
+    const wrap = getState().settings.menuWrap !== false;
+    for (let attempt = 0; attempt < top.items.length; attempt++) {
+      const next = (idx + d + top.items.length) % top.items.length;
+      if (!wrap && (d > 0 && next <= idx || d < 0 && next >= idx)) break;
+      idx = next;
+      if (!top.items[idx].disabled) break;
+    }
+    top.index = idx;
+    render();
+    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
+    speakIndex(idx);
+  }
+  function goFirst() {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    for (let i = 0; i < top.items.length; i++) {
+      if (!top.items[i].disabled) {
+        top.index = i;
+        break;
+      }
+    }
+    render();
+    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
+    speakIndex(top.index);
+  }
+  function goLast() {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    for (let i = top.items.length - 1; i >= 0; i--) {
+      if (!top.items[i].disabled) {
+        top.index = i;
+        break;
+      }
+    }
+    render();
+    playSound(SOUNDS.focus, { out: getSfxBus(), vol: 0.7 });
+    speakIndex(top.index);
+  }
+  function select() {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    const item = top.items[top.index];
+    if (!item || item.disabled) {
+      playSound(SOUNDS.error, { out: getSfxBus() });
+      return;
+    }
+    playSound(SOUNDS.select, { out: getSfxBus() });
+    cancelSpeech();
+    if (item.onSelect) item.onSelect(item);
+  }
+  function speakIndex(i) {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    const item = top.items[i];
+    if (!item) return;
+    const label = typeof item.label === "string" ? item.label : item.text || "";
+    say(label, { blip: "focus" });
+  }
+  function render() {
+    if (!stack.length) {
+      menuEl.innerHTML = "";
+      menuEl.style.pointerEvents = "none";
+      menuEl.classList.remove("open");
+      return;
+    }
+    menuEl.classList.add("open");
+    menuEl.style.pointerEvents = "auto";
+    const top = stack[stack.length - 1];
+    const itemsHtml = top.items.map((it, i) => {
+      const label = it.label || it.text || "";
+      const hint = it.k || it.hint || "";
+      const disabled = it.disabled ? "disabled" : "";
+      const focused = i === top.index ? "focused" : "";
+      const tag = it.tag ? `<span class="tag">${it.tag}</span>` : "";
+      return `<button class="mi ${focused}" data-i="${i}" ${disabled} aria-label="${label}">
+      <span class="lbl">${label}${tag}</span>
+      ${hint ? `<span class="k">${hint}</span>` : ""}
+    </button>`;
+    }).join("");
+    const foot = top.renderFooter ? `<div class="menu-foot">${top.renderFooter()}</div>` : "";
+    menuEl.innerHTML = `
+    <div class="menu open" role="dialog" aria-modal="true" aria-label="${top.title}">
+      <div class="menu-card">
+        <h2 class="menu-title">${top.title}</h2>
+        ${top.subtitle ? `<div class="menu-sub">${top.subtitle}</div>` : ""}
+        <div class="menu-list">${itemsHtml}</div>
+        ${foot}
+        <div class="menu-foot">Swipe up/down to browse. Double-tap to select. Tap to hear again.</div>
+      </div>
+    </div>`;
+    const menuOverlay = menuEl.querySelector(".menu");
+    if (menuOverlay) {
+      menuOverlay.addEventListener("touchstart", onTouchStart, { passive: true });
+      menuOverlay.addEventListener("touchend", onTouchEnd, { passive: false });
+    }
+    menuEl.querySelectorAll(".mi").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const i = parseInt(btn.dataset.i, 10);
+        top.index = i;
+        select();
+      });
+    });
+  }
+  var menuEl, stack, touchStartX, touchStartY, touchStartTime, lastTapTime, SWIPE_THRESHOLD, SWIPE_MAX_TIME, DOUBLE_TAP_MAX_GAP;
+  var init_menu = __esm({
+    "src/ui/menu.js"() {
+      init_speech();
+      init_synth();
+      init_context();
+      init_sounds();
+      init_state();
+      menuEl = null;
+      stack = [];
+      touchStartX = 0;
+      touchStartY = 0;
+      touchStartTime = 0;
+      lastTapTime = 0;
+      SWIPE_THRESHOLD = 40;
+      SWIPE_MAX_TIME = 500;
+      DOUBLE_TAP_MAX_GAP = 350;
     }
   });
 
@@ -3300,9 +3378,9 @@ body.touch .touchpad{display:block;}
   }
   function updateProgress(p) {
     const bar2 = document.getElementById("cp-bar");
-    const pct = document.getElementById("cp-pct");
+    const pct2 = document.getElementById("cp-pct");
     if (bar2) bar2.style.width = Math.round(p * 100) + "%";
-    if (pct) pct.textContent = Math.round(p * 100) + "%";
+    if (pct2) pct2.textContent = Math.round(p * 100) + "%";
   }
   function hideProgress() {
     if (progressEl) progressEl.style.display = "none";
@@ -4918,71 +4996,158 @@ body.touch .touchpad{display:block;}
     setPreBlip(s.preBlip);
     saveSettings();
   }
-  function adj(key, delta, min, max, step, after) {
+  function adj(key, delta, min, max, after) {
     const s = getState().settings;
     s[key] = Math.max(min, Math.min(max, +(s[key] + delta).toFixed(2)));
     apply(s);
     after && after();
   }
-  function settingsMenu(onBack) {
+  function toggle(key) {
     const s = getState().settings;
-    const pct = (v) => Math.round(v * 100) + "%";
+    s[key] = !s[key];
+    apply(s);
+  }
+  function pct(v) {
+    return Math.round(v * 100) + "%";
+  }
+  function generalSettings() {
+    const s = getState().settings;
+    const items = [
+      {
+        label: `Menu wrapping: ${s.menuWrap !== false ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("menuWrap");
+          playSound(SOUNDS.select, { out: getSfxBus() });
+          reopen(generalSettings);
+        }
+      },
+      {
+        label: `Pre-speech blip: ${s.preBlip ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("preBlip");
+          playSound(SOUNDS.blip, { out: getSfxBus() });
+          reopen(generalSettings);
+        }
+      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "General", items });
+  }
+  function menusSettings() {
+    const s = getState().settings;
+    const items = [
+      {
+        label: `Menu wrapping: ${s.menuWrap !== false ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("menuWrap");
+          playSound(SOUNDS.select, { out: getSfxBus() });
+          reopen(menusSettings);
+        }
+      },
+      {
+        label: `Pre-speech blip: ${s.preBlip ? "On" : "Off"}`,
+        onSelect: () => {
+          toggle("preBlip");
+          playSound(SOUNDS.blip, { out: getSfxBus() });
+          reopen(menusSettings);
+        }
+      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "Menus", items });
+  }
+  function soundSettings() {
+    const s = getState().settings;
     const items = [
       {
         label: `Master volume: ${pct(s.masterVol)}`,
-        k: "\u2190 \u2192",
+        k: "tap to adjust",
         onSelect: () => {
-          adj("masterVol", 0.1, 0, 1, 0.1, reopen);
-          playSound(SOUNDS.blip, { out: getSfxBus() });
+          adj("masterVol", 0.1, 0, 1, () => playSound(SOUNDS.blip, { out: getSfxBus() }));
+          reopen(soundSettings);
         }
       },
       {
         label: `Music volume: ${pct(s.musicVol)}`,
-        k: "\u2190 \u2192",
+        k: "tap to adjust",
         onSelect: () => {
-          adj("musicVol", 0.1, 0, 1, 0.1, reopen);
+          adj("musicVol", 0.1, 0, 1);
+          reopen(soundSettings);
         }
       },
       {
         label: `Sound effects: ${pct(s.sfxVol)}`,
-        k: "\u2190 \u2192",
+        k: "tap to adjust",
         onSelect: () => {
-          adj("sfxVol", 0.1, 0, 1, 0.1, reopen);
-          playSound(SOUNDS.select, { out: getSfxBus() });
+          adj("sfxVol", 0.1, 0, 1, () => playSound(SOUNDS.select, { out: getSfxBus() }));
+          reopen(soundSettings);
         }
       },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "Sound", items });
+  }
+  function speechSettings() {
+    const s = getState().settings;
+    const items = [
       {
         label: `Speech volume: ${pct(s.speechVol)}`,
-        k: "\u2190 \u2192",
+        k: "tap to adjust",
         onSelect: () => {
-          adj("speechVol", 0.1, 0, 1, 0.1, reopen);
-          say("Hello.", { blip: false });
+          adj("speechVol", 0.1, 0, 1, () => say("Hello.", { blip: false }));
+          reopen(speechSettings);
         }
       },
       {
         label: `Speech rate: ${s.speechRate.toFixed(2)}\xD7`,
-        k: "\u2190 \u2192",
+        k: "tap to adjust",
         onSelect: () => {
-          adj("speechRate", 0.05, 0.5, 2, 0.05, reopen);
-          say("This is how I sound.", { blip: false });
+          adj("speechRate", 0.1, 0.5, 2, () => say("This is how I sound.", { blip: false }));
+          reopen(speechSettings);
         }
       },
       {
         label: `Speech pitch: ${s.speechPitch.toFixed(2)}`,
-        k: "\u2190 \u2192",
+        k: "tap to adjust",
         onSelect: () => {
-          adj("speechPitch", 0.1, 0.5, 2, 0.1, reopen);
-          say("Testing pitch.", { blip: false });
+          adj("speechPitch", 0.1, 0.5, 2, () => say("Testing pitch.", { blip: false }));
+          reopen(speechSettings);
         }
       },
-      {
-        label: `Audio cues before speech: ${s.preBlip ? "On" : "Off"}`,
-        onSelect: () => {
-          s.preBlip = !s.preBlip;
-          apply(s);
-          reopen();
-        }
-      },
+      { label: "\u2190 Back", onSelect: () => {
+        closeTop();
+        settingsMenu();
+      } }
+    ];
+    openMenu({ title: "Speech", items });
+  }
+  function settingsMenu(onBack) {
+    const items = [
+      { label: "General", onSelect: () => {
+        closeTop();
+        generalSettings();
+      } },
+      { label: "Menus", onSelect: () => {
+        closeTop();
+        menusSettings();
+      } },
+      { label: "Sound", onSelect: () => {
+        closeTop();
+        soundSettings();
+      } },
+      { label: "Speech", onSelect: () => {
+        closeTop();
+        speechSettings();
+      } },
       { label: "\u2190 Back", onSelect: () => {
         closeTop();
         onBack && onBack();
@@ -4990,9 +5155,9 @@ body.touch .touchpad{display:block;}
     ];
     openMenu({ title: "Settings", items });
   }
-  function reopen() {
+  function reopen(subMenu) {
     closeTop();
-    settingsMenu();
+    subMenu();
   }
 
   // src/ui/status.js
