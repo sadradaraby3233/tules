@@ -189,7 +189,7 @@ Action names are case-insensitive.
 | `search_regex` | Lightweight regular-expression search |
 | `search_fuzzy` | Find approximately matching lines |
 | `analyze` | Summarize a file or survey the project |
-| `extract_symbols` | Extract functions, classes, and imports |
+| `extract_symbols` | Extract functions, classes, and imports (Python AST; many languages via patterns) |
 | `review` | Run built-in static checks |
 | `impact_check` | Find files that import or reference a module |
 | `check_duplicates` | Find duplicate symbol definitions |
@@ -220,7 +220,7 @@ Action names are case-insensitive.
 | `powershell` | Run PowerShell when installed |
 | `run` | Backward-compatible alias for Bash |
 | `validate_batch` | Preflight supported commands without applying them |
-| `memory` | Read or append local scratchpad/todo notes |
+| `memory` | Read, append to, or list local notes (`scratchpad`, `todo`, or any custom target) |
 | `list_actions` / `help` | List the live action registry |
 
 For exact schemas, return fields, failure modes, and examples for every action, see
@@ -293,15 +293,16 @@ outside paths, or resolving symlinks is rejected.
 
 Existing files are copied under `.tules_backups/` before mutation. Directory structure
 is mirrored and filenames include timestamps. Rapid edits in the same second receive
-unique backups instead of overwriting history. Writes use an atomic same-directory
+unique backups instead of overwriting history. Only the newest ten backups of each file
+are kept; older ones are pruned automatically. Writes use an atomic same-directory
 replacement and preserve existing file permissions, so an interrupted write cannot leave
 a partially written target. `undo` restores the latest backup for the requested file.
 
-### Python syntax guard
+### Syntax guard
 
-Before committing a `.py` create, overwrite, replacement, insertion, deletion, or line
-replacement, TULES compiles the resulting source. Invalid Python is rejected and the
-original remains unchanged.
+Before committing a create, overwrite, replacement, insertion, deletion, or line
+replacement, TULES validates the resulting file: `.py` is compiled and `.json` is parsed.
+Invalid Python or JSON is rejected and the original remains unchanged.
 
 ### Line endings
 

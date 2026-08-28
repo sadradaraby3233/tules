@@ -65,6 +65,78 @@ def test_extract_symbols_handles_javascript(workspace):
 	assert [item["name"] for item in symbols] == ["run", "x"]
 
 
+def test_extract_symbols_tags_javascript_kinds(workspace):
+	(workspace.root / "kinds.js").write_text(
+		"class Box {}\nconst grow = () => 1;\nlet n = 2;\n", encoding="utf-8"
+	)
+	symbols = CodeAnalyzer().extract_symbols(workspace.load("kinds.js"))
+	assert [(item["kind"], item["name"]) for item in symbols] == [
+		("class", "Box"),
+		("function", "grow"),
+		("variable", "n"),
+	]
+
+
+def test_extract_symbols_handles_go(workspace):
+	(workspace.root / "main.go").write_text(
+		"type User struct {}\nfunc Greet(name string) string { return name }\n", encoding="utf-8"
+	)
+	symbols = CodeAnalyzer().extract_symbols(workspace.load("main.go"))
+	assert {(item["kind"], item["name"]) for item in symbols} == {
+		("type", "User"),
+		("function", "Greet"),
+	}
+
+
+def test_extract_symbols_handles_rust(workspace):
+	(workspace.root / "lib.rs").write_text(
+		"struct Point { x: i32 }\nfn area() -> i32 { 0 }\n", encoding="utf-8"
+	)
+	symbols = CodeAnalyzer().extract_symbols(workspace.load("lib.rs"))
+	assert {(item["kind"], item["name"]) for item in symbols} == {
+		("struct", "Point"),
+		("function", "area"),
+	}
+
+
+def test_extract_symbols_handles_ruby(workspace):
+	(workspace.root / "svc.rb").write_text(
+		"class Service\n\tdef call\n\tend\nend\n", encoding="utf-8"
+	)
+	symbols = CodeAnalyzer().extract_symbols(workspace.load("svc.rb"))
+	assert {(item["kind"], item["name"]) for item in symbols} == {
+		("class", "Service"),
+		("method", "call"),
+	}
+
+
+def test_extract_symbols_is_empty_for_unsupported_languages(workspace):
+	(workspace.root / "data.txt").write_text("nothing to see here\n", encoding="utf-8")
+	assert CodeAnalyzer().extract_symbols(workspace.load("data.txt")) == []
+
+
+def test_find_duplicates_within_a_javascript_file(reviewer, workspace):
+	(workspace.root / "dupe.js").write_text(
+		"function run() {}\nfunction run() {}\n", encoding="utf-8"
+	)
+	duplicates = reviewer.find_duplicates("dupe.js")
+	assert [item["name"] for item in duplicates] == ["run"]
+
+
+def test_find_duplicates_across_languages(reviewer, workspace):
+	(workspace.root / "a.go").write_text("func Handle() {}\n", encoding="utf-8")
+	(workspace.root / "b.go").write_text("func Handle() {}\n", encoding="utf-8")
+	names = [item["name"] for item in reviewer.find_duplicates()]
+	assert "Handle" in names
+
+
+def test_find_dependents_detects_a_javascript_import(reviewer, workspace):
+	(workspace.root / "util.js").write_text("export const pi = 3;\n", encoding="utf-8")
+	(workspace.root / "app.js").write_text("import { pi } from './util';\n", encoding="utf-8")
+	dependents = reviewer.find_dependents("util.js")
+	assert [item["file"] for item in dependents] == ["app.js"]
+
+
 def test_review_flags_an_unused_import(reviewer, workspace):
 	(workspace.root / "unused.py").write_text("import json\nx = 1\n", encoding="utf-8")
 	messages = [issue["message"] for issue in reviewer.review("unused.py")]

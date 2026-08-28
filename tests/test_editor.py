@@ -1,6 +1,6 @@
 import pytest
 
-from tules.editor import Editor, check_syntax
+from tules.editor import Editor, check_json, check_syntax
 from tules.errors import MatchError, SyntaxGuardError, TulesError, WorkspaceError
 
 
@@ -138,3 +138,21 @@ def test_preview_does_not_touch_the_file(editor, workspace):
 def test_check_syntax_accepts_valid_code():
 	assert check_syntax("x = 1\n") is None
 	assert "SyntaxError" in check_syntax("x = (\n")
+
+
+def test_check_json_accepts_valid_and_rejects_broken():
+	assert check_json('{"a": 1}') is None
+	assert "JSONDecodeError" in check_json('{"a": 1,}')
+
+
+def test_json_syntax_guard_blocks_a_broken_edit(editor, workspace):
+	(workspace.root / "config.json").write_text('{"a": 1, "b": 2}\n', encoding="utf-8")
+	with pytest.raises(SyntaxGuardError) as caught:
+		editor.replace_best("config.json", '"b": 2', '"b": 2,', "test")
+	assert caught.value.details["error"].startswith("JSONDecodeError")
+	assert read(workspace, "config.json") == '{"a": 1, "b": 2}\n'
+
+
+def test_create_refuses_broken_json(editor):
+	with pytest.raises(SyntaxGuardError):
+		editor.create("bad.json", '{"a": 1,}')
