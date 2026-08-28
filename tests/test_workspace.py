@@ -1,6 +1,7 @@
 import pytest
 
 from tules.errors import WorkspaceError
+from tules.workspace import Workspace
 
 
 def test_resolve_rejects_paths_outside_the_root(workspace):
@@ -74,3 +75,31 @@ def test_walk_skips_the_backup_directory(workspace):
 	workspace.back_up(workspace.root / "sample.py")
 	names = {path.name for path in workspace.walk()}
 	assert names == {"sample.py", "notes.md"}
+
+
+def test_backups_are_pruned_to_the_retention_limit(tmp_path):
+	space = Workspace(str(tmp_path), max_backups=3)
+	target = tmp_path / "sample.py"
+	for value in range(6):
+		target.write_text(f"x = {value}\n", encoding="utf-8")
+		space.back_up(target)
+	assert len(space.backups_of(target)) == 3
+
+
+def test_pruning_keeps_the_newest_backup(tmp_path):
+	space = Workspace(str(tmp_path), max_backups=2)
+	target = tmp_path / "sample.py"
+	for value in range(4):
+		target.write_text(f"x = {value}\n", encoding="utf-8")
+		space.back_up(target)
+	newest = space.backups_of(target)[0]
+	assert newest.read_text(encoding="utf-8") == "x = 3\n"
+
+
+def test_max_backups_zero_disables_pruning(tmp_path):
+	space = Workspace(str(tmp_path), max_backups=0)
+	target = tmp_path / "sample.py"
+	for value in range(4):
+		target.write_text(f"x = {value}\n", encoding="utf-8")
+		space.back_up(target)
+	assert len(space.backups_of(target)) == 4

@@ -964,7 +964,10 @@ includes line/size and symbol-oriented summary information.
 
 ### `extract_symbols`
 
-Extract functions, classes, and imports from one file.
+Extract functions, classes, and imports from one file. Python is parsed with the AST;
+JS/TS, Go, Rust, Java/C#/Kotlin, C/C++, Ruby, PHP, Swift, Lua, and shell are matched with
+per-language patterns and each symbol is tagged with its `kind`. `check_duplicates` and
+`impact_check` understand the same languages.
 
 **Input:** `file`.
 
@@ -1049,15 +1052,17 @@ that the action name is recognized, not that execution is guaranteed.
 
 ### `memory`
 
-Read or append persistent local notes under `.tules/`.
+Read, append to, or list persistent local notes under `.tules/`.
 
 **Input**
 
 | Field | Required | Default |
 | --- | --- | --- |
-| `target` | no | `scratchpad`; alternatives: `todo` |
-| `action_type` | no | `read`; alternatives: `write` |
+| `target` | no | `scratchpad`; `todo`, or any custom name (mapped to a sanitized `.tules/<name>.md`) |
+| `action_type` | no | `read`; alternatives: `write`, `list` |
 | `content` | write only | Text to append |
+
+`action_type: "list"` returns the names of every memory file and ignores `target`.
 
 ```text
 edit:
@@ -1223,21 +1228,23 @@ relative directory structure. Backup names include a timestamp:
 
 Creating a brand-new file has no prior content to back up. Deletion does create a
 backup. Multiple edits within one second receive unique backup names, and `undo`
-restores the newest backup matching the same file.
+restores the newest backup matching the same file. Only the newest ten backups of each
+file are kept; older ones are pruned automatically after each new backup.
 
 Writes are committed with an atomic same-directory replacement and preserve permissions
 on existing targets. A failed or interrupted write therefore leaves the previous target
 intact rather than exposing partial content. Backups are a safety net, not a substitute
 for careful edits or version control.
 
-## 20. Python syntax guard
+## 20. Syntax guard
 
-Every edit routed through the editor and every Python create/write is compiled before it
-is committed. If the resulting `.py` file is syntactically invalid:
+Every edit routed through the editor and every create/write is validated before it is
+committed. A `.py` file is compiled and a `.json` file is parsed. If the result is
+invalid:
 
 - the write is refused,
 - the original file remains intact,
-- response details include the syntax error,
+- response details include the error (`SyntaxError` for Python, `JSONDecodeError` for JSON),
 - edit failures include nearby source as `blast_radius` when available.
 
 This protects syntax, not behavior. Tests and reviews are still required.

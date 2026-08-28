@@ -1,6 +1,7 @@
 """Every mutation of a workspace file goes through this class."""
 
 import ast
+import json
 import re
 from difflib import SequenceMatcher, unified_diff
 from typing import Any, Dict, List, Optional, Sequence
@@ -23,6 +24,15 @@ def check_syntax(text: str, filename: str = "<edit>") -> Optional[str]:
 		return f"SyntaxError at line {exc.lineno}, offset {exc.offset}: {exc.msg}"
 	except ValueError as exc:
 		return f"Invalid source: {exc}"
+	return None
+
+
+def check_json(text: str) -> Optional[str]:
+	"""Return a description of the JSON error, or None when the text parses."""
+	try:
+		json.loads(text)
+	except json.JSONDecodeError as exc:
+		return f"JSONDecodeError at line {exc.lineno}, column {exc.colno}: {exc.msg}"
 	return None
 
 
@@ -395,9 +405,13 @@ class Editor:
 	def _guard_syntax(
 		self, suffix: str, content: str, relpath: str, include_context: bool = False
 	) -> None:
-		if suffix != ".py":
+		suffix = suffix.lower()
+		if suffix == ".py":
+			problem = check_syntax(content, relpath)
+		elif suffix == ".json":
+			problem = check_json(content)
+		else:
 			return
-		problem = check_syntax(content, relpath)
 		if not problem:
 			return
 		details = {"error": problem}

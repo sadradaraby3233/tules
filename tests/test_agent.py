@@ -123,6 +123,33 @@ def test_memory_round_trip(agent):
 	assert "remember this" in result.details["content"]
 
 
+def test_memory_supports_a_custom_target(agent):
+	agent.run(
+		{
+			"action": "memory",
+			"action_type": "write",
+			"target": "design notes",
+			"content": "keep it simple",
+		}
+	)
+	result = agent.run({"action": "memory", "action_type": "read", "target": "design notes"})
+	assert "keep it simple" in result.details["content"]
+	assert agent.run({"action": "memory", "action_type": "read"}).details["content"] == ""
+
+
+def test_memory_lists_its_files(agent):
+	agent.run({"action": "memory", "action_type": "write", "target": "todo", "content": "x"})
+	agent.run({"action": "memory", "action_type": "write", "target": "ideas", "content": "y"})
+	files = agent.run({"action": "memory", "action_type": "list"}).details["files"]
+	assert set(files) == {"todo.md", "ideas.md"}
+
+
+def test_memory_rejects_a_target_that_sanitizes_to_nothing(agent):
+	result = agent.run({"action": "memory", "action_type": "read", "target": "../.."})
+	assert not result.success
+	assert "Invalid memory target" in result.message
+
+
 def test_undo_restores_the_previous_version(agent):
 	agent.run({"action": "str_replace", "file": "notes.md", "old_str": "alpha", "new_str": "omega"})
 	assert agent.run({"action": "undo", "file": "notes.md"}).success
@@ -169,3 +196,23 @@ def test_monitor_ignores_unrelated_clipboard_text(agent):
 		agent, clipboard=FakeClipboard("just a copied word"), notify=lambda: None
 	)
 	assert monitor.poll() is None
+
+
+def test_monitor_reruns_the_same_block_when_copied_again(agent):
+	block = 'edit: {"action": "read_file", "file": "notes.md"} endedit'
+	clipboard = FakeClipboard(block)
+	monitor = ClipboardMonitor(agent, clipboard=clipboard, notify=lambda: None)
+	first = monitor.poll()
+	assert first.startswith("STATUS: SUCCESS")
+	# The reply now sits on the clipboard; copying the identical block re-triggers.
+	clipboard.text = block
+	second = monitor.poll()
+	assert second == first
+	assert len(clipboard.writes) == 2
+
+
+def test_monitor_skips_a_reply_pasted_back_as_input(agent):
+	clipboard = FakeClipboard("STATUS: SUCCESS\nMESSAGE: Edited app.py")
+	monitor = ClipboardMonitor(agent, clipboard=clipboard, notify=lambda: None)
+	assert monitor.poll() is None
+	assert clipboard.writes == []
