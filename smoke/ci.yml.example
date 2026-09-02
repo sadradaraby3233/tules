@@ -1,3 +1,5 @@
+# Suggested GitHub Actions workflow. Copy to .github/workflows/ci.yml to enable it
+# (this checkout's GitHub app is not allowed to create workflow files itself).
 name: CI
 
 on:
