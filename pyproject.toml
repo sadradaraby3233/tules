@@ -10,6 +10,10 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["pyperclip>=1.8"]
 
+[project.urls]
+Homepage = "https://github.com/sadradaraby3233/tules"
+Issues = "https://github.com/sadradaraby3233/tules/issues"
+
 [project.optional-dependencies]
 browser = ["websocket-client>=1.6", "pynput>=1.7"]
 dev = ["pytest>=7", "websocket-client>=1.6", "websockets>=10", "ruff>=0.4"]
@@ -28,6 +32,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["F", "E", "W", "B", "SIM", "C4", "RUF"]
