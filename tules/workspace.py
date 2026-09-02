@@ -218,15 +218,33 @@ class Workspace:
 		stamp = datetime.now().strftime(BACKUP_STAMP)
 		target = self.backup_root / path.parent.relative_to(self.root)
 		target.mkdir(parents=True, exist_ok=True)
-		base = target / f"{path.stem}_{stamp}{path.suffix}"
-		backup = base
-		counter = 1
-		while backup.exists():
+		backup = target / f"{path.stem}_{stamp}{path.suffix}"
+		if backup.exists() or self._stamp_counters(path, stamp):
+			# Never reuse a name pruned earlier this second: the counter walks
+			# forward past every backup this stamp has already produced, so the
+			# newest copy can never sort behind (and be pruned ahead of) an
+			# older one.
+			counter = max(self._stamp_counters(path, stamp), default=0) + 1
 			backup = target / f"{path.stem}_{stamp}_{counter}{path.suffix}"
-			counter += 1
+			while backup.exists():
+				counter += 1
+				backup = target / f"{path.stem}_{stamp}_{counter}{path.suffix}"
 		shutil.copy2(path, backup)
 		self._prune_backups(path)
 		return backup
+
+	def _stamp_counters(self, path: Path, stamp: str) -> List[int]:
+		"""Counters already used by this file's backups stamped ``stamp``."""
+		folder = self.backup_root / path.parent.relative_to(self.root)
+		if not folder.is_dir():
+			return []
+		pattern = re.compile(rf"^{re.escape(path.stem)}_{stamp}(?:_(\d+))?$")
+		counters = []
+		for item in folder.iterdir():
+			match = pattern.match(item.stem)
+			if item.is_file() and item.suffix == path.suffix and match:
+				counters.append(int(match.group(1) or 0))
+		return counters
 
 	def _prune_backups(self, path: Path) -> None:
 		"""Keep only the newest ``max_backups`` copies of a file; delete the rest."""
@@ -240,13 +258,20 @@ class Workspace:
 		folder = self.backup_root / path.parent.relative_to(self.root)
 		if not folder.is_dir():
 			return []
-		pattern = re.compile(rf"^{re.escape(path.stem)}_\d{{8}}_\d{{6}}(?:_\d+)?$")
-		found = [
-			item
-			for item in folder.iterdir()
-			if item.is_file() and item.suffix == path.suffix and pattern.match(item.stem)
-		]
-		return sorted(found, key=lambda item: (item.stat().st_mtime_ns, item.name), reverse=True)
+		stamp = re.compile(rf"^{re.escape(path.stem)}_(\d{{8}}_\d{{6}})(?:_(\d+))?$")
+		found = []
+		for item in folder.iterdir():
+			if not item.is_file() or item.suffix != path.suffix:
+				continue
+			match = stamp.match(item.stem)
+			if match:
+				# Sort by the creation stamp in the name, not mtime: rapid edits
+				# share file metadata with their source, and a copy2 backup can
+				# otherwise sort behind older ones. The counter breaks ties, so a
+				# second rollover mid-run never demotes the newest backup.
+				order = (match.group(1), int(match.group(2) or 0), item.name)
+				found.append((order, item))
+		return [item for _, item in sorted(found, key=lambda pair: pair[0], reverse=True)]
 
 	def restore(self, path: Path) -> Path:
 		backups = self.backups_of(path)

@@ -1,4 +1,9 @@
-"""Command line entry point."""
+"""Command line entry point.
+
+Running ``tules`` with no arguments (or with just a folder) opens the
+interactive console, which asks everything; the flags below are shortcuts for
+scripts and for people who already know them.
+"""
 
 import argparse
 import sys
@@ -13,10 +18,11 @@ from .monitor import POLL_SECONDS, ClipboardMonitor, run_payload
 from .protocol import find_block
 
 DESCRIPTION = "Clipboard driven code agent: reads edit: ... endedit blocks and applies them."
+EPILOG = "Run tules with no arguments for the interactive console; the flags are script shortcuts."
 
 
 def build_parser() -> argparse.ArgumentParser:
-	parser = argparse.ArgumentParser(prog="tules", description=DESCRIPTION)
+	parser = argparse.ArgumentParser(prog="tules", description=DESCRIPTION, epilog=EPILOG)
 	parser.add_argument("root", nargs="?", default=".", help="workspace root (default: .)")
 	parser.add_argument(
 		"--exec",
@@ -63,14 +69,86 @@ def build_parser() -> argparse.ArgumentParser:
 		help="clipboard poll interval",
 	)
 	parser.add_argument("--verbose", action="store_true", help="log ignored clipboard content")
+	parser.add_argument(
+		"--auto",
+		action="store_true",
+		help="enable browser automation: open the AI chat, focus its edit box, and press"
+		" Ctrl+F12 (or Enter in this terminal) to run the copy/paste loop automatically",
+	)
+	parser.add_argument(
+		"--task",
+		default="",
+		help="with --auto: a task for the AI, appended to the bootstrap prompt",
+	)
+	parser.add_argument(
+		"--cdp-host",
+		default=None,
+		metavar="HOST",
+		help="browser debug host (default 127.0.0.1)",
+	)
+	parser.add_argument(
+		"--cdp-port",
+		type=int,
+		default=None,
+		metavar="PORT",
+		help="browser debug port (default 9222)",
+	)
+	parser.add_argument(
+		"--launch-browser",
+		dest="launch_browser",
+		metavar="NAME",
+		default=None,
+		help="with --auto: start chrome/chromium/edge/brave with the debug port, then continue",
+	)
+	parser.add_argument(
+		"--hotkey",
+		choices=("auto", "pynput", "stdin", "off"),
+		default="auto",
+		help="how the automation is triggered (auto: Ctrl+F12 when possible, else this terminal)",
+	)
+	parser.add_argument(
+		"--response-timeout",
+		type=float,
+		default=600.0,
+		metavar="SECONDS",
+		help="with --auto: how long to wait for an AI response before pausing (default 600)",
+	)
+	parser.add_argument(
+		"--page-clipboard",
+		action="store_true",
+		help="with --auto: read/write the clipboard through the page (headless or remote browsers)",
+	)
+	parser.add_argument(
+		"--sites-file",
+		dest="sites_file",
+		default=None,
+		metavar="PATH",
+		help="where learned website element locations are saved"
+		" (default ~/.tules/browser_sites.json)",
+	)
+	parser.add_argument(
+		"--forget-site",
+		dest="forget_site",
+		default=None,
+		metavar="HOST",
+		help="delete the saved element locations for a website, then exit",
+	)
 	return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-	options = build_parser().parse_args(argv)
+	args_list = list(sys.argv[1:] if argv is None else argv)
+	options = build_parser().parse_args(args_list)
+	if not any(item.startswith("-") for item in args_list):
+		# `tules` or `tules <folder>`: no flags, so ask instead of guessing.
+		from .console import run_console
+
+		return run_console(root=args_list[0] if args_list else ".")
 	if options.prompt:
 		return _emit_prompt(copy=options.copy)
 	set_budget(options.budget)
+	if options.forget_site:
+		return _forget_site(options.forget_site, options.sites_file)
 	try:
 		agent = Agent(
 			root=options.root,
@@ -90,8 +168,46 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 	if options.payload:
 		return _run_once(agent, options.payload)
-	ClipboardMonitor(agent, verbose=options.verbose).start(poll_seconds=options.poll)
+
+	auto_loop = None
+	if options.auto:
+		auto_loop = _build_auto_loop(options, agent)
+	ClipboardMonitor(
+		agent,
+		verbose=options.verbose,
+		auto_loop=auto_loop,
+	).start(poll_seconds=options.poll)
 	return 0
+
+
+def _forget_site(host: str, sites_file: Optional[str]) -> int:
+	from pathlib import Path
+
+	from .browser.profiles import ProfileStore
+
+	store = ProfileStore(Path(sites_file) if sites_file else None)
+	if store.forget(host):
+		print(f"Forgot the saved element locations for {host} ({store.path}).")
+		return 0
+	print(f"No saved locations for {host} in {store.path}.")
+	return 1
+
+
+def _build_auto_loop(options: argparse.Namespace, agent: Agent):
+	"""Assemble the browser automation loop from the command-line flags."""
+	from .browser.wiring import build_auto_loop
+
+	return build_auto_loop(
+		agent=agent,
+		task=options.task,
+		cdp_host=options.cdp_host,
+		cdp_port=options.cdp_port,
+		sites_file=options.sites_file,
+		hotkey=options.hotkey,
+		response_timeout=options.response_timeout,
+		page_clipboard=options.page_clipboard,
+		launch_browser=options.launch_browser or "",
+	)
 
 
 def _emit_prompt(copy: bool = False) -> int:

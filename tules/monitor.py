@@ -23,7 +23,13 @@ def is_reply(text: str) -> bool:
 
 
 class ClipboardMonitor:
-	"""Polls the clipboard, runs what it finds, and never exits on a bad payload."""
+	"""Polls the clipboard, runs what it finds, and never exits on a bad payload.
+
+	With an ``auto_loop`` attached (browser automation) the monitor also acts as
+	the scheduler: the hotkey trigger starts a session, and while a session is
+	active the monitor stands aside so the same clipboard change is never
+	processed twice.
+	"""
 
 	def __init__(
 		self,
@@ -31,11 +37,13 @@ class ClipboardMonitor:
 		clipboard: Optional[Clipboard] = None,
 		notify: Callable[[], None] = beep,
 		verbose: bool = False,
+		auto_loop=None,
 	):
 		self.agent = agent
 		self.clipboard = clipboard or Clipboard()
 		self.notify = notify
 		self.verbose = verbose
+		self.auto_loop = auto_loop
 		self.seen = ""
 		self.running = False
 
@@ -45,16 +53,24 @@ class ClipboardMonitor:
 		print(" TULES clipboard monitor active")
 		print(f" Workspace: {self.agent.root}")
 		print(" Waiting for 'edit: ... endedit' blocks. Ctrl+C to stop.")
+		if self.auto_loop:
+			print(" Browser automation armed: open the AI chat, focus its message box,")
+			print(" then press the trigger to run the paste/wait/copy loop automatically.")
 		print(BANNER)
 		self.seen = self.clipboard.read()
 		try:
 			while self.running:
+				if self.auto_loop and self.auto_loop.consume_trigger():
+					self.auto_loop.run_session()
+					continue
 				self.poll()
 				time.sleep(poll_seconds)
 		except KeyboardInterrupt:
 			print("\nTULES monitor stopped.")
 		finally:
 			self.running = False
+			if self.auto_loop and hasattr(self.auto_loop, "hotkey"):
+				self.auto_loop.hotkey.stop()
 
 	def stop(self) -> None:
 		self.running = False
@@ -70,6 +86,8 @@ class ClipboardMonitor:
 		if current == self.seen:
 			return None
 		self.seen = current
+		if self.auto_loop and self.auto_loop.active:
+			return None  # an automation session owns the clipboard right now
 		if is_reply(current):
 			return None
 		payload = find_block(current)
