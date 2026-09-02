@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-from .errors import TulesError
+from .errors import ArgumentError
 from .models import Result
 
 Handler = Callable[[Any, Dict[str, Any]], Result]
@@ -43,7 +43,7 @@ def alias(name: str, target: str) -> None:
 def lookup(action: str) -> Command:
 	found = REGISTRY.get(action) or REGISTRY.get(ALIASES.get(action, ""))
 	if not found:
-		raise TulesError(f"Unknown action: {action}", available=sorted(REGISTRY))
+		raise ArgumentError(f"Unknown action: {action}")
 	return found
 
 
@@ -57,27 +57,27 @@ def describe() -> List[Dict[str, str]]:
 def text(payload: Dict[str, Any], key: str, default: Optional[str] = None) -> str:
 	value = payload.get(key, default)
 	if value is None:
-		raise TulesError(f"Missing '{key}'")
+		raise ArgumentError(f"Missing '{key}'")
 	if not isinstance(value, str):
-		raise TulesError(f"'{key}' must be a string, got {type(value).__name__}")
+		raise ArgumentError(f"'{key}' must be a string, got {type(value).__name__}")
 	return value
 
 
 def number(payload: Dict[str, Any], key: str, default: Optional[int] = None) -> int:
 	value = payload.get(key, default)
 	if value is None:
-		raise TulesError(f"Missing '{key}'")
+		raise ArgumentError(f"Missing '{key}'")
 	try:
 		return int(value)
 	except (TypeError, ValueError) as exc:
-		raise TulesError(f"'{key}' must be an integer, got {value!r}") from exc
+		raise ArgumentError(f"'{key}' must be an integer, got {value!r}") from exc
 
 
 def decimal(payload: Dict[str, Any], key: str, default: float) -> float:
 	try:
 		return float(payload.get(key, default))
 	except (TypeError, ValueError) as exc:
-		raise TulesError(f"'{key}' must be a number") from exc
+		raise ArgumentError(f"'{key}' must be a number") from exc
 
 
 def flag(payload: Dict[str, Any], key: str, default: bool = False) -> bool:

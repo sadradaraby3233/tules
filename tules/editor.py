@@ -6,6 +6,7 @@ import re
 from difflib import SequenceMatcher, unified_diff
 from typing import Any, Dict, List, Optional, Sequence
 
+from . import structure
 from .errors import MatchError, SyntaxGuardError, TulesError, WorkspaceError
 from .matching import common_indent, describe_closest, locate_block, reindent
 from .models import Result
@@ -355,6 +356,7 @@ class Editor:
 		document = self.workspace.load(relpath)
 		if document.text == content:
 			raise TulesError("NO_CHANGE: content is identical to the existing file")
+		self._guard_structure(path.suffix, document.text, content, relpath)
 		backup = self.workspace.save(document, content)
 		return Result.ok(
 			f"Updated {document.relpath}",
@@ -394,12 +396,25 @@ class Editor:
 		if text == document.text:
 			raise TulesError("NO_CHANGE: the replacement is identical to the original")
 		self._guard_syntax(document.path.suffix, text, document.relpath, include_context=True)
+		self._guard_structure(document.path.suffix, document.text, text, document.relpath)
 		backup = self.workspace.save(document, text)
 		return Result.ok(
 			f"Edited {document.relpath}",
 			backup=self.workspace.relativize(backup),
 			reason=reason,
 			**details,
+		)
+
+	def _guard_structure(self, suffix: str, before: str, after: str, relpath: str) -> None:
+		"""Refuse an edit that unbalances a brace language, judged against the original."""
+		if not structure.supported(suffix) or structure.balanced(before, suffix) is not True:
+			return
+		if structure.balanced(after, suffix) is not False:
+			return
+		raise SyntaxGuardError(
+			"SYNTAX_ERROR_PREVENTED",
+			error=f"{relpath}: {structure.describe(after, suffix)}",
+			blast_radius=structure.describe(after, suffix),
 		)
 
 	def _guard_syntax(

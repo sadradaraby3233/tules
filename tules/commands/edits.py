@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from ..errors import TulesError
+from ..errors import ArgumentError, TulesError
 from ..models import Result
 from ..registry import command, decimal, flag, number, text
 
@@ -19,7 +19,7 @@ def _first_text(payload: Dict[str, Any], names, default=None) -> str:
 			return text(payload, name)
 	if default is not None:
 		return default
-	raise TulesError(f"Missing one of: {', '.join(names)}")
+	raise ArgumentError(f"Missing one of: {', '.join(names)}")
 
 
 @command("replace", "Universally locate and safely replace text", mutates=True)
