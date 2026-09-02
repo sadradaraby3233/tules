@@ -12,7 +12,8 @@ python smoke/run_smoke.py
 ```
 
 The driver starts a local copy of `fake_ai_site.html`, launches a browser with
-`--remote-debugging-port=9333`, and runs the same loop `tules --auto` runs:
+`--remote-debugging-port=9333`, and runs the same loop the console's browser
+automation runs:
 bootstrap paste → Enter → completion detection → Copy click → clipboard read →
 agent execution → reply paste → Enter → … until the AI replies without a
 command block. It passes when the scripted AI's `replace` command actually

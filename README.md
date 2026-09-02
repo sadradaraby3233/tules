@@ -58,7 +58,7 @@ test suite, what `help` returns cannot drift away from what the code does.
 - Literal, regex, fuzzy, glob, and filtered content search across many languages.
 - Bash and PowerShell execution, web search and retrieval, notebook cell editing, static
   review, symbol extraction, dependency checks, and batch validation.
-- Optional browser automation (`tules --auto`): press Ctrl+F12 and TULES drives the
+- Optional browser automation: press Ctrl+F12 and TULES drives the
   paste / Enter / wait / Copy loop in your own browser. See
   [Automating the browser](#automating-the-browser-ctrlf12).
 
@@ -84,25 +84,18 @@ pip install -e ".[dev]"     # + the test suite
 
 ## Running TULES
 
-```sh
-tules .
-tules /path/to/project
-python -m tules .
-```
-
-Useful options:
+Change into the folder you want TULES to work on and run:
 
 ```sh
-tules --prompt           # print the short bootstrap prompt for the AI chat
-tules --prompt --copy    # ... and put it straight on the clipboard
-tules . --budget 800     # shrink results to suit a small context window
-tules . --actions        # print all registered actions
-tules . --no-shell       # disable Bash, PowerShell, and run
-tules . --exec cmd.json  # execute one JSON payload file and exit
-tules . --auto           # arm the Ctrl+F12 browser loop (see below)
+tules
 ```
 
-The supplied directory is the workspace root. File tools cannot escape it.
+An interactive console opens and asks everything: which job to run and any
+options for it — the clipboard monitor, the Ctrl+F12 browser automation, the
+bootstrap prompt, the action list, a one-shot payload, or forgetting a learned
+website. There is nothing to memorize. Flags still exist for scripts
+(`tules --help`), but everyday use never needs them. The folder you start in
+is the workspace root; file tools cannot escape it.
 
 ## Automating the browser (Ctrl+F12)
 
@@ -117,15 +110,16 @@ First time setup:
 
 ```sh
 pip install "tules[browser]"        # websocket-client + pynput
-tules --launch-browser chrome       # starts a browser with the debug port...
-tules . --auto                      # ...then run TULES in your project folder
+tules                               # choose "Browser automation" (option 2)
 ```
 
-Then, by hand, one last time: open the AI chat, start a new chat, focus the
-message box, and press **Ctrl+F12**. From that moment TULES pastes its
-bootstrap prompt (plus `--task "..."` if given), presses Enter, waits for the
-response to finish, clicks Copy, runs what it finds, and pastes its reply back
-— until the AI replies without a command block, or something needs you.
+The console asks for an optional task, the debug port, and whether to start a
+browser for you. Then, by hand, one last time: open the AI chat, start a new
+chat, focus the message box, and press **Ctrl+F12**. From that moment TULES
+pastes its bootstrap prompt (plus your task, if you typed one), presses Enter,
+waits for the response to finish, clicks Copy, runs what it finds, and pastes
+its reply back — until the AI replies without a command block, or something
+needs you.
 
 How it stays safe and self-correcting:
 
@@ -135,15 +129,15 @@ How it stays safe and self-correcting:
   learned is saved per website in `~/.tules/browser_sites.json` and reused.
 - **Teaching.** If a site cannot be recognized, TULES asks you to focus the
   message box (or click the Copy button once) and remembers what you touched.
-  Your teach click still copies, so no turn is wasted. `--forget-site HOST`
+  Your teach click still copies, so no turn is wasted. Console option 7
   clears a website's memory.
 - **Never guesses.** An ambiguous box pauses the loop instead of typing into
   the wrong element; the Copy button is clicked only at a freshly measured
   rectangle of a confidently identified button.
 - **Completion detection.** Copy is pressed only after the response text has
   stopped growing while no stop/streaming indicator is visible — streaming,
-  stalls, and long answers are waited out (`--response-timeout`, default
-  600 s), never a fixed sleep.
+  stalls, and long answers are waited out (the console asks for the limit;
+  default 600 s), never a fixed sleep.
 - **Resumable pauses.** Every pause (timeout, missed element, clipboard
   failure) prints the reason and resumes from that step on the next Ctrl+F12.
   The clipboard monitor keeps working before, between, and after sessions.
@@ -247,7 +241,8 @@ safe way to let a free chatbot do real work on real code.
 5. Paste that result back into the model.
 6. Continue until the model has inspected, changed, and verified the project.
 
-With `tules . --auto`, steps 2–6 happen automatically after you press Ctrl+F12
+With the console's browser automation (run `tules`, choose option 2), steps 2–6 happen
+automatically after you press Ctrl+F12
 in the chat tab — same protocol, same clipboard, no hand-carrying.
 
 ## Command protocol

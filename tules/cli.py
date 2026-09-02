@@ -1,4 +1,9 @@
-"""Command line entry point."""
+"""Command line entry point.
+
+Running ``tules`` with no arguments (or with just a folder) opens the
+interactive console, which asks everything; the flags below are shortcuts for
+scripts and for people who already know them.
+"""
 
 import argparse
 import sys
@@ -13,10 +18,11 @@ from .monitor import POLL_SECONDS, ClipboardMonitor, run_payload
 from .protocol import find_block
 
 DESCRIPTION = "Clipboard driven code agent: reads edit: ... endedit blocks and applies them."
+EPILOG = "Run tules with no arguments for the interactive console; the flags are script shortcuts."
 
 
 def build_parser() -> argparse.ArgumentParser:
-	parser = argparse.ArgumentParser(prog="tules", description=DESCRIPTION)
+	parser = argparse.ArgumentParser(prog="tules", description=DESCRIPTION, epilog=EPILOG)
 	parser.add_argument("root", nargs="?", default=".", help="workspace root (default: .)")
 	parser.add_argument(
 		"--exec",
@@ -70,15 +76,21 @@ def build_parser() -> argparse.ArgumentParser:
 		" Ctrl+F12 (or Enter in this terminal) to run the copy/paste loop automatically",
 	)
 	parser.add_argument(
-		"--task", default="",
+		"--task",
+		default="",
 		help="with --auto: a task for the AI, appended to the bootstrap prompt",
 	)
 	parser.add_argument(
-		"--cdp-host", default=None, metavar="HOST",
+		"--cdp-host",
+		default=None,
+		metavar="HOST",
 		help="browser debug host (default 127.0.0.1)",
 	)
 	parser.add_argument(
-		"--cdp-port", type=int, default=None, metavar="PORT",
+		"--cdp-port",
+		type=int,
+		default=None,
+		metavar="PORT",
 		help="browser debug port (default 9222)",
 	)
 	parser.add_argument(
@@ -125,7 +137,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-	options = build_parser().parse_args(argv)
+	args_list = list(sys.argv[1:] if argv is None else argv)
+	options = build_parser().parse_args(args_list)
+	if not any(item.startswith("-") for item in args_list):
+		# `tules` or `tules <folder>`: no flags, so ask instead of guessing.
+		from .console import run_console
+
+		return run_console(root=args_list[0] if args_list else ".")
 	if options.prompt:
 		return _emit_prompt(copy=options.copy)
 	set_budget(options.budget)
@@ -176,67 +194,20 @@ def _forget_site(host: str, sites_file: Optional[str]) -> int:
 
 
 def _build_auto_loop(options: argparse.Namespace, agent: Agent):
-	"""Assemble the browser automation loop with its hotkey trigger."""
-	from pathlib import Path
+	"""Assemble the browser automation loop from the command-line flags."""
+	from .browser.wiring import build_auto_loop
 
-	from .browser.cdp import DEFAULT_HOST, DEFAULT_PORT
-	from .browser.hotkey import HotkeyWatcher, Trigger
-	from .browser.loop import AutoLoop, Reporter
-	from .browser.page import BrowserPage, LazyClipboard, PageClipboard
-	from .browser.profiles import ProfileStore
-
-	host = options.cdp_host or DEFAULT_HOST
-	port = options.cdp_port or DEFAULT_PORT
-	store = ProfileStore(Path(options.sites_file) if options.sites_file else None)
-	reporter = Reporter()
-	if store.warning:
-		print(f"WARNING: {store.warning}", file=sys.stderr)
-	trigger = Trigger()
-	attached = {}
-
-	def connect():
-		_, conn = _connect_with_chooser(host, port)
-		attached["conn"] = conn
-		return BrowserPage(conn)
-
-	def clipboard_backend():
-		if options.page_clipboard and "conn" in attached:
-			return PageClipboard(attached["conn"])
-		return Clipboard()
-
-	loop = AutoLoop(
+	return build_auto_loop(
 		agent=agent,
-		clipboard=LazyClipboard(clipboard_backend),
-		connect=connect,
-		store=store,
-		trigger=trigger,
-		reporter=reporter,
-		response_timeout=options.response_timeout,
 		task=options.task,
+		cdp_host=options.cdp_host,
+		cdp_port=options.cdp_port,
+		sites_file=options.sites_file,
+		hotkey=options.hotkey,
+		response_timeout=options.response_timeout,
+		page_clipboard=options.page_clipboard,
+		launch_browser=options.launch_browser or "",
 	)
-	if options.launch_browser:
-		from .browser.launch import launch
-
-		launch(options.launch_browser, port=port)
-	loop.hotkey = HotkeyWatcher(trigger, reporter.status).start(prefer=options.hotkey)
-	return loop
-
-
-def _connect_with_chooser(host: str, port: int):
-	"""Attach to the AI chat tab, asking on the terminal when several are open."""
-	from .browser.cdp import BrowserError, connect as cdp_connect
-
-	def chooser(pages):
-		print("Several tabs are open. Which one is the AI chat?")
-		for index, page in enumerate(pages):
-			print(f"  {index + 1}. {page.describe()}")
-		raw = input("Number: ").strip()
-		try:
-			return pages[int(raw) - 1]
-		except (ValueError, IndexError) as exc:
-			raise BrowserError("no tab chosen") from exc
-
-	return cdp_connect(host=host, port=port, chooser=chooser)
 
 
 def _emit_prompt(copy: bool = False) -> int:
