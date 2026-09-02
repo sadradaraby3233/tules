@@ -1,6 +1,13 @@
 """Universal replacement cascade and cross-platform shell tools."""
 
+import os
+import shutil
+import subprocess
+import time
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 
 def replace(agent, file, old, new, **extra):
@@ -175,6 +182,32 @@ def test_shell_rejects_invalid_timeout_and_background(agent):
 	assert "Background" in result.message
 
 
+def test_a_timed_out_command_kills_the_processes_it_left_running(agent):
+	"""A backgrounded grandchild must not outlive the command that spawned it."""
+	if os.name != "posix" or not shutil.which("pgrep"):
+		pytest.skip("process-group reaping is only asserted on POSIX")
+	marker = "tules-timeout-marker"
+	agent.shell_timeout = 1
+	started = time.time()
+	result = agent.run({"action": "bash", "command": f"sleep 120 & sleep 120 # {marker}"})
+	assert not result.success
+	assert "timed out" in result.message.lower()
+	assert time.time() - started < 20, "the timeout must not wait on the orphaned pipe"
+	time.sleep(0.5)
+	survivors = subprocess.run(["pgrep", "-x", "sleep"], capture_output=True, text=True)
+	assert "120" not in _command_lines(survivors.stdout.split())
+
+
+def _command_lines(pids):
+	bodies = []
+	for pid in pids:
+		try:
+			bodies.append(Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace"))
+		except OSError:
+			continue
+	return " ".join(bodies)
+
+
 def test_powershell_has_clear_unavailable_error_or_executes(agent):
 	result = agent.run({"action": "powershell", "command": "Write-Output 'hello'"})
 	if result.success:
@@ -184,14 +217,22 @@ def test_powershell_has_clear_unavailable_error_or_executes(agent):
 		assert "not installed" in result.message.lower()
 
 
+class _FakeProcess:
+	"""Just enough of Popen for the shell layer: it finishes immediately."""
+
+	returncode = 0
+
+	def communicate(self, timeout=None):
+		return "hello\n", ""
+
+
 def test_powershell_command_construction_when_pwsh_is_available(agent):
-	completed = __import__("subprocess").CompletedProcess([], 0, "hello\n", "")
 	with (
 		patch(
 			"tules.commands.shell.shutil.which",
 			side_effect=lambda name: "/usr/bin/pwsh" if name == "pwsh" else None,
 		),
-		patch("tules.commands.shell.subprocess.run", return_value=completed) as invoked,
+		patch("tules.commands.shell._spawn", return_value=_FakeProcess()) as invoked,
 	):
 		result = agent.run({"action": "powershell", "command": "Write-Output hello"})
 	assert result.success

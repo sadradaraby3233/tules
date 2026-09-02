@@ -9,7 +9,7 @@ import argparse
 import sys
 from typing import List, Optional
 
-from .agent import Agent
+from .agent import SHELL_TIMEOUT, Agent
 from .clipboard import Clipboard
 from .guide import BOOTSTRAP
 from .errors import TulesError
@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser.add_argument(
 		"--no-auto-review", action="store_true", help="do not review a file after editing it"
 	)
-	parser.add_argument("--shell-timeout", type=int, default=30, metavar="SECONDS")
+	parser.add_argument("--shell-timeout", type=int, default=SHELL_TIMEOUT, metavar="SECONDS")
 	parser.add_argument(
 		"--budget",
 		type=int,

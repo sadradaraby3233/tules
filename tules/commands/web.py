@@ -141,8 +141,9 @@ def _validate_public_url(url: str) -> None:
 		raise TulesError("URL must use http or https and include a host", url=url)
 	if parsed.username or parsed.password:
 		raise TulesError("Credentials in URLs are not allowed")
+	port = parsed.port or (80 if parsed.scheme == "http" else 443)
 	try:
-		addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)
+		addresses = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
 	except socket.gaierror as exc:
 		raise TulesError(f"Could not resolve host: {parsed.hostname}") from exc
 	for address in addresses:

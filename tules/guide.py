@@ -159,7 +159,7 @@ USAGE: Dict[str, Usage] = {
 		note="inserts after line_start; 0 puts the content at the top",
 	),
 	"list_actions": Usage(
-		optional=("name", "limit"),
+		optional=("name",),
 		example='{"action":"list_actions","name":"replace"}',
 		note="also reachable as 'help'; pass 'name' for one action's full usage",
 	),

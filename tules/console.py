@@ -61,7 +61,14 @@ class Console:
 		self.output = output or print
 		self.root = root or "."
 		self.sites_file = sites_file
-		self.agent: Optional[Agent] = None
+		self._agent: Optional[Agent] = None
+
+	@property
+	def agent(self) -> Agent:
+		"""The configured agent; the session always builds one before dispatching."""
+		if self._agent is None:
+			raise RuntimeError("The console workspace has not been set up yet")
+		return self._agent
 
 	# --- prompting ----------------------------------------------------------
 
@@ -131,7 +138,7 @@ class Console:
 		budget = self.ask_int("Result size limit per value, in characters", DEFAULT_BUDGET)
 		allow_shell = self.confirm("Allow shell commands (bash / powershell)?", True)
 		set_budget(budget)
-		self.agent = Agent(root=folder, allow_shell=allow_shell)
+		self._agent = Agent(root=folder, allow_shell=allow_shell)
 		self.output(f" Workspace: {self.agent.root}")
 
 	def _ask_folder(self) -> str:
