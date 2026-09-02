@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tules"
-version = "2.0.0"
+dynamic = ["version"]
 description = "Clipboard driven local code agent: reads edit blocks from a chat model and applies them safely"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,6 +16,9 @@ dev = ["pytest>=7", "websocket-client>=1.6", "websockets>=10", "ruff>=0.4"]
 
 [project.scripts]
 tules = "tules.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "tules.version.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["tules*"]

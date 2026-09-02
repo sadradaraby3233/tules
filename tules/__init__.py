@@ -5,9 +5,9 @@ from .editor import Editor
 from .errors import MatchError, SyntaxGuardError, TulesError, WorkspaceError
 from .models import Result, SearchResult
 from .search import Searcher
+from .version import __version__
 from .workspace import Workspace
 
-__version__ = "2.0.0"
 __all__ = [
 	"Agent",
 	"Editor",

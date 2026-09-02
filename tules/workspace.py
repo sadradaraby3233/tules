@@ -8,7 +8,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, List, Optional, Set
+from typing import Iterator, List, Optional, Set, Tuple
 
 from .errors import WorkspaceError
 from .ignores import Ignores
@@ -216,35 +216,43 @@ class Workspace:
 	def back_up(self, path: Path) -> Path:
 		"""Copy a file to a unique timestamped backup, even after rapid edits."""
 		stamp = datetime.now().strftime(BACKUP_STAMP)
-		target = self.backup_root / path.parent.relative_to(self.root)
-		target.mkdir(parents=True, exist_ok=True)
-		backup = target / f"{path.stem}_{stamp}{path.suffix}"
-		if backup.exists() or self._stamp_counters(path, stamp):
+		folder = self.backup_root / path.parent.relative_to(self.root)
+		folder.mkdir(parents=True, exist_ok=True)
+		existing = self._existing_backups(path)
+		counters = [counter for backup_stamp, counter, _ in existing if backup_stamp == stamp]
+		backup = folder / f"{path.stem}_{stamp}{path.suffix}"
+		if counters or backup.exists():
 			# Never reuse a name pruned earlier this second: the counter walks
 			# forward past every backup this stamp has already produced, so the
 			# newest copy can never sort behind (and be pruned ahead of) an
 			# older one.
-			counter = max(self._stamp_counters(path, stamp), default=0) + 1
-			backup = target / f"{path.stem}_{stamp}_{counter}{path.suffix}"
-			while backup.exists():
+			counter = max(counters, default=0)
+			while True:
 				counter += 1
-				backup = target / f"{path.stem}_{stamp}_{counter}{path.suffix}"
-		shutil.copy2(path, backup)
+				backup = folder / f"{path.stem}_{stamp}_{counter}{path.suffix}"
+				if not backup.exists():
+					break
+		try:
+			shutil.copy2(path, backup)
+		except OSError as exc:
+			raise WorkspaceError(f"Cannot back up {self.relativize(path)}: {exc}") from exc
 		self._prune_backups(path)
 		return backup
 
-	def _stamp_counters(self, path: Path, stamp: str) -> List[int]:
-		"""Counters already used by this file's backups stamped ``stamp``."""
+	def _existing_backups(self, path: Path) -> List[Tuple[str, int, Path]]:
+		"""Every backup of ``path`` as ``(stamp, counter, file)``, unordered."""
 		folder = self.backup_root / path.parent.relative_to(self.root)
 		if not folder.is_dir():
 			return []
-		pattern = re.compile(rf"^{re.escape(path.stem)}_{stamp}(?:_(\d+))?$")
-		counters = []
+		pattern = re.compile(rf"^{re.escape(path.stem)}_(\d{{8}}_\d{{6}})(?:_(\d+))?$")
+		found = []
 		for item in folder.iterdir():
+			if not item.is_file() or item.suffix != path.suffix:
+				continue
 			match = pattern.match(item.stem)
-			if item.is_file() and item.suffix == path.suffix and match:
-				counters.append(int(match.group(1) or 0))
-		return counters
+			if match:
+				found.append((match.group(1), int(match.group(2) or 0), item))
+		return found
 
 	def _prune_backups(self, path: Path) -> None:
 		"""Keep only the newest ``max_backups`` copies of a file; delete the rest."""
@@ -255,33 +263,36 @@ class Workspace:
 				stale.unlink()
 
 	def backups_of(self, path: Path) -> List[Path]:
-		folder = self.backup_root / path.parent.relative_to(self.root)
-		if not folder.is_dir():
-			return []
-		stamp = re.compile(rf"^{re.escape(path.stem)}_(\d{{8}}_\d{{6}})(?:_(\d+))?$")
-		found = []
-		for item in folder.iterdir():
-			if not item.is_file() or item.suffix != path.suffix:
-				continue
-			match = stamp.match(item.stem)
-			if match:
-				# Sort by the creation stamp in the name, not mtime: rapid edits
-				# share file metadata with their source, and a copy2 backup can
-				# otherwise sort behind older ones. The counter breaks ties, so a
-				# second rollover mid-run never demotes the newest backup.
-				order = (match.group(1), int(match.group(2) or 0), item.name)
-				found.append((order, item))
-		return [item for _, item in sorted(found, key=lambda pair: pair[0], reverse=True)]
+		"""Backups of a file, newest first.
+
+		Sorted by the creation stamp in the name, not mtime: rapid edits share
+		file metadata with their source, and a copy2 backup can otherwise sort
+		behind older ones. The counter breaks ties, so a second rollover
+		mid-run never demotes the newest backup.
+		"""
+		ordered = sorted(
+			self._existing_backups(path),
+			key=lambda item: (item[0], item[1], item[2].name),
+			reverse=True,
+		)
+		return [item for _, _, item in ordered]
 
 	def restore(self, path: Path) -> Path:
 		backups = self.backups_of(path)
 		if not backups:
 			raise WorkspaceError(f"No backup found for {self.relativize(path)}")
 		latest = backups[0]
-		path.parent.mkdir(parents=True, exist_ok=True)
-		shutil.copy2(latest, path)
+		try:
+			path.parent.mkdir(parents=True, exist_ok=True)
+			shutil.copy2(latest, path)
+		except OSError as exc:
+			raise WorkspaceError(f"Cannot restore {self.relativize(path)}: {exc}") from exc
 		return latest
 
 	def state_file(self, name: str) -> Path:
-		self.state_root.mkdir(exist_ok=True)
+		"""Path to one of TULES' own notes, creating the state folder on demand."""
+		try:
+			self.state_root.mkdir(exist_ok=True)
+		except OSError as exc:
+			raise WorkspaceError(f"Cannot create {STATE_DIR}: {exc}") from exc
 		return self.state_root / name

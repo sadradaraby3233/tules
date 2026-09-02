@@ -14,8 +14,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from ..errors import TulesError, WorkspaceError
 from ..models import Result
 from ..registry import command, flag, number, text
+from ..version import __version__
 
-USER_AGENT = "TULES/2.0 (+https://github.com/sadradaraby3233/tules)"
+PROJECT_URL = "https://github.com/sadradaraby3233/tules"
+USER_AGENT = f"TULES/{__version__} (+{PROJECT_URL})"
 DEFAULT_TIMEOUT = 20
 MAX_TIMEOUT = 60
 DEFAULT_FETCH_BYTES = 4 * 1024 * 1024

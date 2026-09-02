@@ -31,7 +31,7 @@ class Agent:
 		self.editor = Editor(self.workspace)
 		self.searcher = Searcher(self.workspace)
 		self.analyzer = CodeAnalyzer()
-		self.reviewer = Reviewer(self.workspace)
+		self.reviewer = Reviewer(self.workspace, self.analyzer)
 		self.allow_shell = allow_shell
 		self.shell_timeout = shell_timeout
 		self.auto_review = auto_review

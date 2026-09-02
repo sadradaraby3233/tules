@@ -4,15 +4,23 @@ import ast
 import json
 import re
 from difflib import SequenceMatcher, unified_diff
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from . import structure
 from .errors import MatchError, SyntaxGuardError, TulesError, WorkspaceError
-from .matching import common_indent, describe_closest, locate_block, reindent
+from .matching import (
+	QUOTE_REPLACEMENTS,
+	common_indent,
+	describe_closest,
+	locate_block,
+	reindent,
+)
 from .models import Result
 from .workspace import Document, Workspace
 
 BLAST_RADIUS_LINES = 10
+SPACES_PER_TAB = 4
+QUOTE_TABLE = str.maketrans(QUOTE_REPLACEMENTS)
 DIFF_LINES = 60
 SHORT_BLOCK_CONFIDENCE = {1: 0.95, 3: 0.90}
 
@@ -416,10 +424,11 @@ class Editor:
 			return
 		if structure.balanced(after, suffix) is not False:
 			return
+		damage = structure.describe(after, suffix)
 		raise SyntaxGuardError(
 			"SYNTAX_ERROR_PREVENTED",
-			error=f"{relpath}: {structure.describe(after, suffix)}",
-			blast_radius=structure.describe(after, suffix),
+			error=f"{relpath}: {damage}",
+			blast_radius=damage,
 		)
 
 	def _guard_syntax(
@@ -489,6 +498,32 @@ class Editor:
 # Pure replacement helpers ------------------------------------------------------
 
 
+def _indent_translator(indents: Sequence[str], base: str) -> Callable[[str], str]:
+	"""Return the function that rewrites one relative indent in the local style."""
+	if any("\t" in indent for indent in indents):
+
+		def to_tabs(relative: str) -> str:
+			return relative.replace(" " * SPACES_PER_TAB, "\t")
+
+		return to_tabs
+
+	widths = [
+		len(indent.expandtabs(SPACES_PER_TAB)) - len(base.expandtabs(SPACES_PER_TAB))
+		for indent in indents
+	]
+	unit = min((width for width in widths if width > 0), default=SPACES_PER_TAB)
+
+	def to_spaces(relative: str) -> str:
+		return relative.replace("\t", " " * unit)
+
+	return to_spaces
+
+
+def _leading(line: str) -> str:
+	"""The whitespace a line starts with."""
+	return line[: len(line) - len(line.lstrip(" \t"))]
+
+
 def apply_substring(content: str, old: str, new: str, replace_all: bool) -> str:
 	"""Apply a substring edit and avoid leaving a blank line after full-line deletion."""
 	needle = old
@@ -499,32 +534,19 @@ def apply_substring(content: str, old: str, new: str, replace_all: bool) -> str:
 
 def adapt_indent_style(body: List[str], matched: Sequence[str], base: str) -> List[str]:
 	"""Translate model indentation to the local block's tab/space convention."""
-	indents = [line[: len(line) - len(line.lstrip(" \t"))] for line in matched if line.strip()]
-	uses_tabs = any("\t" in indent for indent in indents)
-	if uses_tabs:
-		converted = []
-		for line in body:
-			prefix = line[: len(line) - len(line.lstrip(" \t"))]
-			rest = line[len(prefix) :]
-			relative = prefix[len(base) :] if prefix.startswith(base) else prefix
-			relative = relative.replace("    ", "\t")
-			converted.append(base + relative + rest)
-		return converted
-	space_widths = [len(indent.expandtabs(4)) - len(base.expandtabs(4)) for indent in indents]
-	unit = min((width for width in space_widths if width > 0), default=4)
+	indents = [_leading(line) for line in matched if line.strip()]
+	translate = _indent_translator(indents, base)
 	converted = []
 	for line in body:
-		prefix = line[: len(line) - len(line.lstrip(" \t"))]
-		rest = line[len(prefix) :]
+		prefix = _leading(line)
 		relative = prefix[len(base) :] if prefix.startswith(base) else prefix
-		converted.append(base + relative.replace("\t", " " * unit) + rest)
+		converted.append(base + translate(relative) + line[len(prefix) :])
 	return converted
 
 
 def normalize_quotes(value: str) -> str:
-	return value.translate(
-		str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
-	)
+	"""Fold curly quotes onto straight ones, so typography never blocks a match."""
+	return value.translate(QUOTE_TABLE)
 
 
 def preserve_quote_style(search: str, actual: str, replacement: str) -> str:
