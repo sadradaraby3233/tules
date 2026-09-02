@@ -14,6 +14,8 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+from .profiles import normalize_host
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9222
 CALL_TIMEOUT = 15.0
@@ -70,7 +72,6 @@ class Target:
 	"""One open tab we could attach to."""
 
 	def __init__(self, data: Dict[str, Any]):
-		self.target_id = str(data.get("id", ""))
 		self.title = str(data.get("title", ""))
 		self.url = str(data.get("url", ""))
 		self.ws_url = str(data.get("webSocketDebuggerUrl", ""))
@@ -81,10 +82,7 @@ class Target:
 		return self.type == "page" and bool(self.ws_url)
 
 	def host(self) -> str:
-		url = self.url
-		if "://" in url:
-			url = url.split("://", 1)[1]
-		return url.split("/", 1)[0].split(":", 1)[0].lower()
+		return normalize_host(self.url)
 
 	def describe(self) -> str:
 		return f"{self.title[:60]!r} {self.url[:80]}"

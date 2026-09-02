@@ -63,6 +63,16 @@ def text(payload: Dict[str, Any], key: str, default: Optional[str] = None) -> st
 	return value
 
 
+def first_text(payload: Dict[str, Any], *keys: str, default: Optional[str] = None) -> str:
+	"""The first present key's string value; used where a payload spelling varies."""
+	for key in keys:
+		if payload.get(key) is not None:
+			return text(payload, key)
+	if default is not None:
+		return default
+	raise ArgumentError(f"Missing one of: {', '.join(keys)}")
+
+
 def number(payload: Dict[str, Any], key: str, default: Optional[int] = None) -> int:
 	value = payload.get(key, default)
 	if value is None:

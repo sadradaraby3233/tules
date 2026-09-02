@@ -33,10 +33,6 @@ class Result:
 	def fail(cls, message: str, errors: Optional[List[str]] = None, **details: Any) -> "Result":
 		return cls(False, message, details, errors=list(errors or []))
 
-	def annotate(self, **details: Any) -> "Result":
-		self.details.update(details)
-		return self
-
 	def warn(self, message: str) -> "Result":
 		self.warnings.append(message)
 		return self

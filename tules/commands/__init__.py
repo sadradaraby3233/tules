@@ -1,6 +1,6 @@
 """Importing this package registers every action in the registry."""
 
-from . import edits, file_tools, review, search, shell, web
+from . import edits, file_tools, meta, review, search, shell, web
 from ..registry import REGISTRY, alias
 
 # Public compatibility aliases live in one place so command modules stay focused.
@@ -18,4 +18,4 @@ for old_name in (
 ):
 	alias(old_name, "replace")
 
-__all__ = ["REGISTRY", "edits", "file_tools", "review", "search", "shell", "web"]
+__all__ = ["REGISTRY", "edits", "file_tools", "meta", "review", "search", "shell", "web"]

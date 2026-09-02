@@ -1,9 +1,7 @@
-"""Search actions."""
+"""Workspace-wide literal, regex, and fuzzy line search."""
 
 from typing import Any, Dict, List
 
-from .. import guide
-from ..errors import TulesError
 from ..models import Result, SearchResult
 from ..registry import command, decimal, flag, text
 
@@ -40,32 +38,3 @@ def search_fuzzy(agent, payload: Dict[str, Any]) -> Result:
 		text(payload, "search"), threshold=decimal(payload, "threshold", 0.8)
 	)
 	return _report(results, "fuzzy")
-
-
-@command("impact_check", "List files that import or reference a module")
-def impact_check(agent, payload: Dict[str, Any]) -> Result:
-	relpath = text(payload, "file")
-	dependents = agent.reviewer.find_dependents(relpath)
-	if not dependents:
-		return Result.ok(f"Nothing references {relpath}", dependents=[])
-	return Result.ok(f"{len(dependents)} file(s) depend on {relpath}", dependents=dependents)
-
-
-@command("check_duplicates", "Report symbols defined more than once")
-def check_duplicates(agent, payload: Dict[str, Any]) -> Result:
-	duplicates = agent.reviewer.find_duplicates(payload.get("file") or None)
-	if not duplicates:
-		return Result.ok("No duplicates found", duplicates=[])
-	return Result.ok(f"Found {len(duplicates)} duplicate(s)", duplicates=duplicates)
-
-
-@command("list_actions", "List every action this agent understands")
-def list_actions(agent, payload: Dict[str, Any]) -> Result:
-	"""Serve the documentation the model would otherwise have to carry in its context."""
-	wanted = payload.get("name") or payload.get("action_name")
-	if not wanted:
-		return Result.ok(f"{len(agent.describe())} actions available", content=guide.index())
-	name = guide.resolve(str(wanted))
-	if not name:
-		raise TulesError(f"Unknown action: {wanted}", content=guide.index())
-	return Result.ok(f"Usage for {name}", content=guide.detail(name))

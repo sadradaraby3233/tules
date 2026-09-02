@@ -125,15 +125,11 @@ class AutoLoop:
 	# --- trigger ------------------------------------------------------------
 
 	def request_start(self) -> None:
-		"""Called by the hotkey watcher (any thread)."""
+		"""Ask for a session from any thread (the hotkey watcher, or a test)."""
 		self.trigger.request()
 
 	def consume_trigger(self) -> bool:
 		return self.trigger.consume()
-
-	@property
-	def resume_hint(self) -> str:
-		return RESUME_HINT
 
 	# --- session ------------------------------------------------------------
 
@@ -146,17 +142,17 @@ class AutoLoop:
 		except AutomationPaused as exc:
 			self.mode = exc.mode
 			self.reporter.error(exc.message)
-			self.reporter.status(self.resume_hint)
+			self.reporter.status(RESUME_HINT)
 			beep()
 		except BrowserError as exc:
 			# The mode is left as it is: nothing submitted keeps its paste-for-
 			# next-time plan, and a session past submitting resumes watching.
 			self.reporter.error(f"browser problem: {exc.message}")
-			self.reporter.status(self.resume_hint)
+			self.reporter.status(RESUME_HINT)
 			beep()
 		except Exception as exc:  # never let the automation crash the monitor
 			self.reporter.error(f"unexpected automation failure: {type(exc).__name__}: {exc}")
-			self.reporter.status(self.resume_hint)
+			self.reporter.status(RESUME_HINT)
 			beep()
 		finally:
 			self.active = False

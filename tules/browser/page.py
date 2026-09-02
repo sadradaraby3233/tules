@@ -19,6 +19,7 @@ from typing import Any, Callable, List, Optional
 
 from . import js
 from .cdp import BrowserError, CDPConnection
+from .profiles import normalize_host
 from .selectors import Element, choose_copy, choose_input, choose_input_from, derive_candidates
 
 DEFAULT_RESPONSE_SELECTORS = [
@@ -52,7 +53,6 @@ SEND_SELECTORS = [
 	'button[type="submit"]',
 ]
 
-TEACH_SECONDS = 120.0
 SUBMIT_NO_BUTTON = (
 	"the message is still in the edit box and no send button could be confidently identified"
 )
@@ -90,11 +90,7 @@ class PageState:
 
 	@property
 	def host(self) -> str:
-		url = self.url
-		if "://" in url:
-			url = url.split("://", 1)[1]
-		host = url.split("/", 1)[0].split(":", 1)[0].lower()
-		return host[4:] if host.startswith("www.") else host
+		return normalize_host(self.url)
 
 
 @dataclass

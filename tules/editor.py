@@ -80,7 +80,7 @@ class Editor:
 			offsets = self._offsets(text, actual)
 			if replace_all:
 				styled = preserve_quote_style(search, actual, replace)
-				return self._apply(
+				return self.apply(
 					document,
 					apply_substring(text, actual, styled, True),
 					reason,
@@ -92,7 +92,7 @@ class Editor:
 				return self._replace_occurrence(relpath, actual, replace, match_id, reason)
 			if len(offsets) == 1:
 				styled = preserve_quote_style(search, actual, replace)
-				return self._apply(
+				return self.apply(
 					document,
 					apply_substring(text, actual, styled, False),
 					reason,
@@ -110,7 +110,7 @@ class Editor:
 						end += 1
 					updated = text[:chosen] + styled + text[end:]
 					line = text.count("\n", 0, chosen) + 1
-					return self._apply(
+					return self.apply(
 						document,
 						updated,
 						reason,
@@ -150,7 +150,7 @@ class Editor:
 		matches = self._token_matches(text, search)
 		if len(matches) == 1:
 			span = matches[0]
-			return self._apply(
+			return self.apply(
 				document,
 				text[: span.start()] + replace + text[span.end() :],
 				reason,
@@ -164,7 +164,7 @@ class Editor:
 
 		segment = self._definition_source(document, search)
 		if segment:
-			return self._apply(
+			return self.apply(
 				document,
 				text.replace(segment, replace, 1),
 				reason,
@@ -261,7 +261,7 @@ class Editor:
 		}
 		if file_indent != search_indent:
 			details["indent_adjusted"] = f"{search_indent!r} -> {file_indent!r}"
-		return self._apply(document, updated, reason, **details)
+		return self.apply(document, updated, reason, **details)
 
 	def _occurrence_candidates(self, relpath: str, search: str) -> List[Dict[str, Any]]:
 		document = self._open(relpath, search)
@@ -287,7 +287,7 @@ class Editor:
 			raise MatchError(f"Match id {index} not found", occurrences=len(offsets))
 		offset = offsets[index]
 		text = document.text[:offset] + replace + document.text[offset + len(search) :]
-		return self._apply(document, text, reason, match_id=index)
+		return self.apply(document, text, reason, match_id=index)
 
 	# Explicit line operations -----------------------------------------------------
 
@@ -300,21 +300,21 @@ class Editor:
 		body = replace.split("\n") if replace else []
 		text = "\n".join(lines[: first - 1] + body + lines[min(last, len(lines)) :])
 		span = f"{first}-{min(last, len(lines))}"
-		return self._apply(document, text, reason, replaced_lines=span)
+		return self.apply(document, text, reason, replaced_lines=span)
 
 	def insert_lines(self, relpath: str, line: int, content: str, reason: str) -> Result:
 		document = self._open(relpath)
 		lines = document.lines
 		position = max(0, min(line, len(lines)))
 		text = "\n".join(lines[:position] + content.split("\n") + lines[position:])
-		return self._apply(document, text, reason, inserted_at=position + 1)
+		return self.apply(document, text, reason, inserted_at=position + 1)
 
 	def delete_lines(self, relpath: str, first: int, last: int, reason: str) -> Result:
 		document = self._open(relpath)
 		lines = document.lines
 		self._check_range(first, last, len(lines))
 		text = "\n".join(lines[: first - 1] + lines[min(last, len(lines)) :])
-		return self._apply(document, text, reason, deleted_lines=f"{first}-{min(last, len(lines))}")
+		return self.apply(document, text, reason, deleted_lines=f"{first}-{min(last, len(lines))}")
 
 	# Preview and file lifecycle ---------------------------------------------------
 
@@ -392,7 +392,12 @@ class Editor:
 			raise TulesError("Empty search string")
 		return self.workspace.load(relpath)
 
-	def _apply(self, document: Document, text: str, reason: str, **details: Any) -> Result:
+	def apply(self, document: Document, text: str, reason: str, **details: Any) -> Result:
+		"""Validate, back up, and write new text for an already loaded document.
+
+		Every mutation funnels through here, so the syntax and structure guards
+		and the backup can never be bypassed by a new command.
+		"""
 		if text == document.text:
 			raise TulesError("NO_CHANGE: the replacement is identical to the original")
 		self._guard_syntax(document.path.suffix, text, document.relpath, include_context=True)

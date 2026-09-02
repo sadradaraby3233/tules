@@ -8,7 +8,6 @@ needs them.
 """
 
 import os
-from pathlib import Path
 from typing import Callable, List, Optional
 
 from .agent import Agent
@@ -230,27 +229,19 @@ class Console:
 			self.output(f"{item['action']:<24} {item['summary']}")
 
 	def _run_payload_file(self) -> None:
-		from .monitor import run_payload
-		from .protocol import find_block
+		from .monitor import run_payload_file
 
 		path = self.ask("Path to the JSON payload file")
 		try:
-			with open(path, encoding="utf-8") as handle:
-				text = handle.read()
+			self.output(run_payload_file(self.agent, path))
 		except OSError as exc:
 			self.output(f"  Could not read {path}: {exc}")
-			return
-		self.output(run_payload(self.agent, find_block(text) or text))
 
 	def _forget_site(self) -> None:
-		from .browser.profiles import ProfileStore
+		from .browser.profiles import forget_site
 
-		store = ProfileStore(Path(self.sites_file) if self.sites_file else None)
 		host = self.ask("Website to forget (for example chatgpt.com)")
-		if store.forget(host):
-			self.output(f"Forgot {host}. TULES will ask you to show it the elements next time.")
-		else:
-			self.output(f"No saved locations for {host} in {store.path}.")
+		self.output(forget_site(host, self.sites_file)[1])
 
 
 def run_console(

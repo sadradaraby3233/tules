@@ -10,10 +10,10 @@ automatic click would have, so the loop can carry straight on with the text it
 put on the clipboard.
 """
 
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 from .page import BrowserPage
-from .profiles import ProfileStore, SiteProfile, valid_selector
+from .profiles import ProfileStore, SiteProfile, normalize_host, valid_selector
 from .selectors import Element
 
 INPUT_INSTRUCTIONS = """TULES cannot tell which box is the AI message box on this site.
@@ -30,6 +30,29 @@ remember which button you clicked.
 """
 
 TIMEOUT_MESSAGE = "no {kind} was identified within {seconds} s"
+
+# Opening guesses for well-known AI chat sites, keyed by normalized hostname.
+# Keys must be SiteProfile field names; every value is verified against the live
+# DOM before it is used, so a stale entry costs nothing but a fallback.
+KNOWN_SITES: Dict[str, Dict[str, str]] = {
+	"chatgpt.com": {
+		"input_selector": "textarea#prompt-textarea",
+		"send_selector": "#composer-submit-button",
+	},
+	"chat.openai.com": {"input_selector": "textarea#prompt-textarea"},
+	"claude.ai": {"input_selector": 'div[contenteditable="true"].ProseMirror'},
+	"gemini.google.com": {"input_selector": 'div.ql-editor[contenteditable="true"]'},
+	"copilot.microsoft.com": {"input_selector": "textarea#userInput"},
+	"chat.deepseek.com": {"input_selector": "textarea#chat-input"},
+	"grok.com": {"input_selector": "textarea"},
+	"chat.mistral.ai": {"input_selector": "textarea"},
+	"perplexity.ai": {"input_selector": "textarea[placeholder]"},
+	"chat.qwen.ai": {"input_selector": "textarea"},
+	"kimi.com": {"input_selector": "textarea"},
+	"duckduckgo.com": {"input_selector": "textarea"},
+	"poe.com": {"input_selector": "textarea"},
+	"huggingface.co": {"input_selector": "textarea"},
+}
 
 
 class TeachingTimeout(Exception):
@@ -79,38 +102,17 @@ class Teacher:
 				f"the {kind} you showed me cannot be described by a stable selector; "
 				"this site will need teaching again next time"
 			)
-		profile = self._save(kind, host, selector, element)
+		profile = self._save(kind, host, selector)
 		self.report(f"Learned the {kind}: {element.describe()}")
 		self.report(f"Saved as {selector!r} for {host} in {self.store.path}")
 		return element, profile
 
-	def _save(self, kind: str, host: str, selector: str, element: Element) -> SiteProfile:
+	def _save(self, kind: str, host: str, selector: str) -> SiteProfile:
 		profile = self.store.load(host) or SiteProfile(host=host)
-		if kind == "input":
-			profile = profile.with_selector("input_selector", selector)
-			profile = profile.with_selector("input_kind", element.kind or element.tag)
-		else:
-			profile = profile.with_selector("copy_selector", selector)
+		field = "input_selector" if kind == "input" else "copy_selector"
+		profile = profile.with_selector(field, selector)
 		self.store.save(profile)
 		return profile
-
-	def wait_for_user(self, deadline: float) -> None:
-		"""Small helper for pausing on a wall-clock deadline."""
-		while self.clock.now() < deadline:
-			self.sleep(self.poll_seconds)
-
-
-def profile_selectors(profile: Optional[SiteProfile]) -> dict:
-	"""The selectors a saved profile contributes, empty strings when absent."""
-	if profile is None:
-		return {}
-	return {
-		"input": profile.input_selector,
-		"copy": profile.copy_selector,
-		"send": profile.send_selector,
-		"response": profile.response_selector,
-		"generating": profile.generating_selector,
-	}
 
 
 def known_site_defaults(host: str) -> SiteProfile:
@@ -120,23 +122,4 @@ def known_site_defaults(host: str) -> SiteProfile:
 	quietly discarded when they do not resolve, so a site redesign degrades to
 	detection or teaching rather than a wrong click.
 	"""
-	KNOWN: dict = {
-		"chatgpt.com": {"input": "textarea#prompt-textarea", "send": "#composer-submit-button"},
-		"chat.openai.com": {"input": "textarea#prompt-textarea"},
-		"claude.ai": {"input": 'div[contenteditable="true"].ProseMirror'},
-		"gemini.google.com": {"input": 'div.ql-editor[contenteditable="true"]'},
-		"copilot.microsoft.com": {"input": "textarea#userInput"},
-		"chat.deepseek.com": {"input": "textarea#chat-input"},
-		"grok.com": {"input": "textarea"},
-		"chat.mistral.ai": {"input": "textarea"},
-		"perplexity.ai": {"input": "textarea[placeholder]"},
-		"chat.qwen.ai": {"input": "textarea"},
-		"kimi.com": {"input": "textarea"},
-		"duckduckgo.com": {"input": "textarea"},
-		"poe.com": {"input": "textarea"},
-		"huggingface.co": {"input": "textarea"},
-	}
-	hints = KNOWN.get(host)
-	if not hints:
-		return SiteProfile(host=host)
-	return SiteProfile(host=host, **hints)
+	return SiteProfile(host=host, **KNOWN_SITES.get(normalize_host(host), {}))

@@ -2,9 +2,9 @@
 
 from typing import Any, Dict
 
-from ..errors import ArgumentError, TulesError
+from ..errors import TulesError
 from ..models import Result
-from ..registry import command, decimal, flag, number, text
+from ..registry import command, decimal, first_text, flag, number, text
 
 DEFAULT_REASON = "AI edit"
 
@@ -13,21 +13,12 @@ def _reason(payload: Dict[str, Any], fallback: str = DEFAULT_REASON) -> str:
 	return text(payload, "reason", fallback)
 
 
-def _first_text(payload: Dict[str, Any], names, default=None) -> str:
-	for name in names:
-		if name in payload and payload[name] is not None:
-			return text(payload, name)
-	if default is not None:
-		return default
-	raise ArgumentError(f"Missing one of: {', '.join(names)}")
-
-
 @command("replace", "Universally locate and safely replace text", mutates=True)
 def replace(agent, payload: Dict[str, Any]) -> Result:
 	"""Accept every supported replacement parameter spelling."""
-	relpath = _first_text(payload, ("file", "file_path"))
-	search = _first_text(payload, ("old_string", "old_str", "search"))
-	replacement = _first_text(payload, ("new_string", "new_str", "replace_with"), "")
+	relpath = first_text(payload, "file", "file_path")
+	search = first_text(payload, "old_string", "old_str", "search")
+	replacement = first_text(payload, "new_string", "new_str", "replace_with", default="")
 	action = str(payload.get("action", "replace")).lower()
 	if search == "":
 		path = agent.workspace.resolve(relpath)
@@ -36,7 +27,7 @@ def replace(agent, payload: Dict[str, Any]) -> Result:
 		document = agent.workspace.load(relpath)
 		if document.text.strip():
 			raise TulesError("Cannot use an empty search on a non-empty existing file")
-		return agent.editor._apply(
+		return agent.editor.apply(
 			document,
 			replacement,
 			_reason(payload, "Universal replace"),
