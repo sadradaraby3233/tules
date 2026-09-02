@@ -12,6 +12,10 @@ class TulesError(Exception):
 		self.details: Dict[str, Any] = details
 
 
+class ArgumentError(TulesError):
+	"""A command was called with a missing or malformed argument."""
+
+
 class WorkspaceError(TulesError):
 	"""A path is missing, unreadable or outside the workspace root."""
 

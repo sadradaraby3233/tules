@@ -2,8 +2,10 @@
 
 from typing import Any, Dict, List
 
+from .. import guide
+from ..errors import TulesError
 from ..models import Result, SearchResult
-from ..registry import command, decimal, flag, number, text
+from ..registry import command, decimal, flag, text
 
 REPORTED_MATCHES = 20
 
@@ -59,6 +61,11 @@ def check_duplicates(agent, payload: Dict[str, Any]) -> Result:
 
 @command("list_actions", "List every action this agent understands")
 def list_actions(agent, payload: Dict[str, Any]) -> Result:
-	limit = number(payload, "limit", 0)
-	actions = agent.describe()
-	return Result.ok(f"{len(actions)} actions available", actions=actions[:limit] or actions)
+	"""Serve the documentation the model would otherwise have to carry in its context."""
+	wanted = payload.get("name") or payload.get("action_name")
+	if not wanted:
+		return Result.ok(f"{len(agent.describe())} actions available", content=guide.index())
+	name = guide.resolve(str(wanted))
+	if not name:
+		raise TulesError(f"Unknown action: {wanted}", content=guide.index())
+	return Result.ok(f"Usage for {name}", content=guide.detail(name))

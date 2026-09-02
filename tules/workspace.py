@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterator, List, Optional, Set
 
 from .errors import WorkspaceError
+from .ignores import Ignores
 
 BACKUP_DIR = ".tules_backups"
 STATE_DIR = ".tules"
@@ -99,13 +100,19 @@ class Document:
 class Workspace:
 	"""Resolves, reads, writes and backs up files below a fixed root."""
 
-	def __init__(self, root: str = ".", max_backups: int = MAX_BACKUPS_PER_FILE):
+	def __init__(
+		self,
+		root: str = ".",
+		max_backups: int = MAX_BACKUPS_PER_FILE,
+		respect_ignores: bool = True,
+	):
 		self.root = Path(root).expanduser().resolve()
 		if not self.root.is_dir():
 			raise WorkspaceError(f"Not a directory: {self.root}")
 		self.backup_root = self.root / BACKUP_DIR
 		self.state_root = self.root / STATE_DIR
 		self.max_backups = max_backups
+		self.ignores = Ignores.read(self.root) if respect_ignores else Ignores()
 
 	def resolve(self, relpath: str) -> Path:
 		if not relpath:
@@ -141,6 +148,8 @@ class Workspace:
 		except ValueError:
 			return False
 		if any(part in SKIPPED_DIRS for part in parts[:-1]):
+			return False
+		if self.ignores.ignored("/".join(parts)):
 			return False
 		try:
 			return path.is_file() and path.stat().st_size <= MAX_TEXT_BYTES

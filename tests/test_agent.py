@@ -18,7 +18,7 @@ class FakeClipboard:
 def test_unknown_action_lists_the_available_ones(agent):
 	result = agent.run({"action": "teleport"})
 	assert not result.success
-	assert "search" in result.details["available"]
+	assert "search" in result.details["content"]
 
 
 def test_non_object_command_is_rejected(agent):

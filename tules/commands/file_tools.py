@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from ..errors import TulesError, WorkspaceError
 from ..models import Result
+from ..formatting import budget
 from ..registry import command, flag, number, text
 from ..workspace import SKIPPED_DIRS
 
@@ -41,6 +42,33 @@ def _path(payload: Dict[str, Any], *names: str) -> str:
 	raise TulesError(f"Missing '{names[0]}'")
 
 
+def _fit(lines: List[str], first: int) -> Tuple[List[str], int]:
+	"""Take as many lines from `first` as the render budget will actually show."""
+	window: List[str] = []
+	used = 0
+	for line in lines[first:]:
+		used += len(line) + 1
+		if window and used > budget():
+			break
+		window.append(line)
+	return window, first + len(window)
+
+
+def _resume(
+	action: str, key: str, relpath: str, start: str, nxt: int, total: int
+) -> Dict[str, Any]:
+	"""Tell the model, in its own command language, how to read the part it has not seen."""
+	if nxt >= total:
+		return {"truncated": False}
+	return {
+		"truncated": True,
+		"next": (
+			f'{{"action":"{action}","{key}":"{relpath}","{start}":{nxt + 1}}}'
+			f"  ({total - nxt} of {total} lines still unread)"
+		),
+	}
+
+
 def _relative_base(agent, value: Any) -> Path:
 	if value in (None, ""):
 		return agent.root
@@ -59,8 +87,11 @@ def _iter_files(agent, base: Path) -> Iterable[Path]:
 			parts = path.relative_to(agent.root).parts
 		except ValueError:
 			continue
-		if path.is_file() and not any(part in SKIPPED_DIRS for part in parts[:-1]):
-			yield path
+		if not path.is_file() or any(part in SKIPPED_DIRS for part in parts[:-1]):
+			continue
+		if agent.workspace.ignores.ignored("/".join(parts)):
+			continue
+		yield path
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +107,10 @@ def read(agent, payload: Dict[str, Any]) -> Result:
 	limit = number(payload, "limit", READ_LIMIT)
 	if offset < 1 or limit < 1:
 		raise TulesError("'offset' and 'limit' must be positive integers")
-	window = lines[offset - 1 : offset - 1 + limit]
+	if "limit" in payload:
+		window = lines[offset - 1 : offset - 1 + limit]
+	else:
+		window, _ = _fit(lines, offset - 1)
 	content = "\n".join(f"{offset + i:6d}→{line}" for i, line in enumerate(window))
 	return Result.ok(
 		f"Read {document.relpath} lines {offset}-{offset + len(window) - 1}",
@@ -85,7 +119,9 @@ def read(agent, payload: Dict[str, Any]) -> Result:
 		start_line=offset,
 		num_lines=len(window),
 		total_lines=len(lines),
-		truncated=offset - 1 + len(window) < len(lines),
+		**_resume(
+			"read", "file_path", document.relpath, "offset", offset - 1 + len(window), len(lines)
+		),
 	)
 
 
@@ -279,15 +315,18 @@ def _memory_filename(target: str) -> str:
 def read_file(agent, payload: Dict[str, Any]) -> Result:
 	document = agent.workspace.load(text(payload, "file"), strict=False)
 	lines = document.lines
-	first = payload.get("start_line")
-	last = payload.get("end_line")
-	if first is None and last is None:
-		return Result.ok(f"Read {document.relpath}", content=document.text, total_lines=len(lines))
 	first = number(payload, "start_line", 1)
-	last = number(payload, "end_line", len(lines))
-	body = "\n".join(lines[max(0, first - 1) : min(len(lines), last)])
+	if payload.get("end_line") is None:
+		window, nxt = _fit(lines, max(0, first - 1))
+	else:
+		last = number(payload, "end_line", len(lines))
+		window = lines[max(0, first - 1) : min(len(lines), last)]
+		nxt = max(0, first - 1) + len(window)
 	return Result.ok(
-		f"Read lines {first}-{last} of {document.relpath}", content=body, total_lines=len(lines)
+		f"Read lines {first}-{first + len(window) - 1} of {document.relpath}",
+		content="\n".join(window),
+		total_lines=len(lines),
+		**_resume("read_file", "file", document.relpath, "start_line", nxt, len(lines)),
 	)
 
 
@@ -296,13 +335,18 @@ def view(agent, payload: Dict[str, Any]) -> Result:
 	document = agent.workspace.load(text(payload, "file"), strict=False)
 	lines = document.lines
 	first = number(payload, "start_line", 1)
-	last = number(payload, "end_line", min(len(lines), first + PREVIEW_LINES - 1))
-	window = lines[max(0, first - 1) : min(len(lines), last)]
+	if payload.get("end_line") is None:
+		window, nxt = _fit(lines, max(0, first - 1))
+	else:
+		last = number(payload, "end_line", min(len(lines), first + PREVIEW_LINES - 1))
+		window = lines[max(0, first - 1) : min(len(lines), last)]
+		nxt = max(0, first - 1) + len(window)
 	body = "\n".join(f"{first + offset:4d} | {line}" for offset, line in enumerate(window))
 	return Result.ok(
 		f"Viewed {document.relpath} lines {first}-{first + len(window) - 1}",
 		content=body,
 		total_lines=len(lines),
+		**_resume("view", "file", document.relpath, "start_line", nxt, len(lines)),
 	)
 
 

@@ -9,27 +9,84 @@ JSON commands can inspect and modify a local project through TULES:
 - **TULES** performs the filesystem, search, replacement, analysis, and shell work;
 - the **user** copies commands to TULES and pastes results back into the conversation.
 
-> **Using TULES with an AI model?** Give the model
-> **[AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md)**. It contains the complete operating contract,
-> command schemas, response formats, decision rules, recovery guidance, and examples.
-> This README is intentionally shorter and intended for repository users and contributors.
+> **Using TULES with an AI model?** Run `tules --prompt --copy` and paste the result into
+> the chat. That is under a thousand characters, and it is all the model needs: TULES
+> serves the rest of its own documentation on demand. See
+> [Working inside a small context window](#working-inside-a-small-context-window).
+>
+> The full manual, **[AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md)**, is still there as the human
+> reference and for models with a large context to spare. This README is intentionally
+> shorter and intended for repository users and contributors.
+
+## Working inside a small context window
+
+TULES is designed for the realistic case: a free chatbot account with a short context
+window, and a human doing the copying. Nothing is automated against any chat service —
+you copy a block out and paste a result back, which is why TULES never needs an API key
+or a login. It also means every round trip costs you an action, so the design spends
+bytes and round trips carefully.
+
+Three things follow from that.
+
+**1. You do not paste the manual.** Run:
+
+```bash
+tules --prompt --copy
+```
+
+That is a 992 character bootstrap: the `edit: ... endedit` envelope, how to read a
+result, four rules, and one escape hatch. TULES serves the rest of its own documentation
+on demand.
+
+| Command | Returns | Size |
+| --- | --- | --- |
+| `{"action":"help"}` | every action, grouped, with its required arguments | ~860 characters |
+| `{"action":"help","name":"replace"}` | that action's arguments, caveat, and a working example | ~300–550 characters |
+
+**2. A wrong guess costs no round trip.** If a command is called with a missing or
+malformed argument, the failure carries that action's usage, and an unknown action name
+returns the index. The model corrects itself on its next turn instead of spending a
+turn asking. Guessing is cheaper than looking up, so the prompt tells it to guess.
+
+**3. Results are windowed, and say so.** Every value the model sees is capped. When a
+value is cut, the reply says so in words rather than in a quiet footnote, and reads
+return the exact command to continue:
+
+```text
+MESSAGE: Read lines 1-64 of tules/editor.py
+DETAILS:
+  total_lines: 547
+  truncated: True
+  next: {"action":"read_file","file":"tules/editor.py","start_line":65}  (483 of 547 lines still unread)
+```
+
+Command output is cut from the *front* instead, because a test or build run states its
+verdict last. Use `--budget` to match your chatbot:
+
+```bash
+tules . --budget 800     # small free-tier window
+tules . --budget 4000    # a model with room to spare
+```
+
+A complete six-turn session at `--budget 800` — bootstrap, discovery, a file read, a
+wrong guess, the edit, and verification — costs about **1,300 tokens, roughly 16% of an
+8k window**. Pasting `AI_TOOL_GUIDE.md` instead costs about 12,700 tokens, which does
+not fit at all.
+
+Because the usage table is checked against the live registry by the test suite, what
+`help` returns cannot drift away from what the code does.
 
 ## Highlights
 
-- Model-independent clipboard protocol—no API key or model SDK required.
-- One universal `replace` action instead of several competing replacement engines.
-- Exact, normalized-quote, whitespace, token, Python AST, context, and fuzzy matching.
-- Ambiguous replacements are rejected unless context, a candidate ID, or explicit
-  replace-all behavior resolves them.
-- Workspace-confined file access.
-- Timestamped backups and per-file undo.
-- Python syntax protection before writes are committed.
-- CRLF/LF preservation.
-- Literal, regular-expression, fuzzy, glob, and filtered content search.
-- Google web search plus safe page retrieval, HTML/text/link/element extraction, and downloads.
-- Structured Jupyter notebook cell editing.
-- Bash and PowerShell execution with timeouts and structured results.
-- Static review, symbol extraction, dependency checks, and batch validation.
+- Model-independent clipboard protocol — no API key, login, or model SDK.
+- One universal `replace` action: exact, quote-normalized, whitespace, token, Python AST,
+  context, and fuzzy matching, rejecting ambiguity rather than guessing.
+- Workspace-confined access, timestamped backups, atomic writes, and per-file undo.
+- Python and JSON parsed before a write lands; bracket balance enforced for brace
+  languages; `.gitignore`-aware search.
+- Literal, regex, fuzzy, glob, and filtered content search across many languages.
+- Bash and PowerShell execution, web search and retrieval, notebook cell editing, static
+  review, symbol extraction, dependency checks, and batch validation.
 
 ## Requirements
 
@@ -65,6 +122,9 @@ python -m tules .
 Useful options:
 
 ```sh
+tules --prompt           # print the short bootstrap prompt for the AI chat
+tules --prompt --copy    # ... and put it straight on the clipboard
+tules . --budget 800     # shrink results to suit a small context window
 tules . --actions        # print all registered actions
 tules . --no-shell       # disable Bash, PowerShell, and run
 tules . --exec cmd.json  # execute one JSON payload file and exit
@@ -72,10 +132,103 @@ tules . --exec cmd.json  # execute one JSON payload file and exit
 
 The supplied directory is the workspace root. File tools cannot escape it.
 
+## What using TULES is actually like
+
+Be clear about the shape of this tool before you start, because it is not an
+autonomous agent and does not pretend to be.
+
+**You are the transport.** TULES never talks to a chat service. There is no API key, no
+login, no browser automation — you copy a command block out of the chat and paste a
+result back. That is what keeps TULES clear of any chat provider's terms, and it is also
+the main cost: **one command block per copy-paste, and you do that by hand.** A small
+change is three or four round trips. A careful multi-file change is fifteen or twenty.
+
+**The model is the brain and it can be wrong.** TULES executes what it is told. The
+guards below catch structural damage, not bad judgement. Every backup, every `STATUS:
+FAILED`, and every review warning is there because a model will, eventually, try
+something wrong.
+
+**A realistic first session:**
+
+1. `tules .` in the project, `tules --prompt --copy`, paste into the chat.
+2. Give it the task. It replies with `{"action":"help"}` and `{"action":"analyze"}`.
+3. Copy that block. TULES runs it and puts the result on your clipboard. Paste back.
+4. It searches, reads the relevant region, proposes an edit. Paste, run, paste back.
+5. It runs your tests through `bash`, reads the failures, fixes them.
+6. You review `git diff` yourself before committing. Always.
+
+Expect roughly 1,300 tokens of context for a short session at `--budget 800`. Expect to
+spend more of your own attention on copying than on reading the code.
+
+### Projects this suits
+
+- **Python**, most of all. It is the only language with a real parser in the write path,
+  AST-aware matching, and syntax refusal before a write lands.
+- **Small and mid-sized codebases** — up to a few hundred files — where you can name the
+  file or describe the symbol. Discovery costs round trips, so a project you already
+  know is much cheaper than one you do not.
+- **Projects with a fast, single-command test suite.** `pytest -q`, `npm test`, `go
+  test ./...`. The verify step is what makes the loop trustworthy, and a slow suite makes
+  it painful.
+- **Text-shaped work**: config files, documentation, JSON fixtures, scripts, a
+  well-contained refactor, adding tests, chasing a specific bug.
+- **Learning or reviewing a codebase**, where `analyze`, `extract_symbols`, and
+  `impact_check` do the reading and you do the thinking.
+
+### Where to be careful
+
+- **Languages other than Python and JSON have a weaker guard.** JavaScript, TypeScript,
+  Go, Rust, Java, C#, C, C++, PHP, and Swift get a bracket-balance check, which refuses an
+  edit that leaves delimiters unbalanced. That catches the common damage from a bad
+  replacement. It is not a parser and will not catch a type error, a missing semicolon,
+  or a wrong identifier. **Run the project's own build or tests after editing them.**
+- **Everything else — YAML, TOML, HTML, CSS, SQL, Markdown, shell — has no write guard at
+  all.** A broken edit is written to disk. The backup is your safety net.
+- **Large files cost real turns.** Results are windowed, so a 3,000-line file takes many
+  reads to work through. Narrow first with `grep` or `extract_symbols`, then read only
+  the region you need.
+- **Batches are not transactional.** Commands in an array run in order, and a failure
+  part-way through leaves the earlier edits applied. Use `validate_batch` first for
+  anything that must land together, and check each `[COMMAND n/N]` status.
+- **`undo` is one step deep, per file.** It restores that file's most recent backup.
+  Calling it twice does not walk back two edits. For real history, use git.
+- **Shell actions run with your full user permissions**, in the workspace directory.
+  `bash`, `powershell`, and `run` are ordinary subprocesses — they are not sandboxed. Use
+  `--no-shell` if you do not want the model executing anything.
+- **`web_search` scrapes a search engine's HTML.** It has no API key and no stability
+  guarantee; it will break when the page markup changes. Treat it as a convenience.
+- **Ignored files are skipped in search, not protected.** `.gitignore` now keeps build
+  output and secret files out of `search`, `grep`, and `glob`, but a file named directly
+  is still read. Do not rely on this as a security boundary.
+
+### Where not to use it
+
+- **Anything where an unreviewed write is dangerous**: production configuration, secrets,
+  database migrations, infrastructure-as-code, deployment scripts. The airgap is a human
+  pasting quickly, which is not the same as a human reading carefully.
+- **Large monorepos.** Whole-project search reads every text file under the root each
+  time. It will work and it will be slow, and discovery will dominate your round trips.
+- **Refactors that must be atomic across many files** — a rename touching thirty call
+  sites. Nothing rolls back, and you will be reconciling a half-applied change by hand.
+- **Binary, generated, or vendored files.** Non-UTF-8 files are rejected outright, and
+  files over 4 MB are skipped by search.
+- **As an unattended agent.** There is no autonomous loop by design. If you want
+  something that runs on its own, this is the wrong tool.
+- **On a repository with uncommitted work you cannot afford to lose.** Commit or stash
+  first. TULES backs up every file it touches under `.tules_backups/`, but git is the
+  real safety net.
+
+### The honest summary
+
+TULES is a careful pair of hands for a model that cannot reach your filesystem. It is
+good at making a specific change to a specific file and proving the change worked. It is
+slow, manual, and deliberately un-autonomous. If those are acceptable, the guards and the
+backups make it a safe way to let a free chatbot do real work on real code.
+
 ## Basic workflow
 
 1. Start TULES in the project you want to modify.
-2. Give your AI model [AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md) and your task.
+2. Paste `tules --prompt` output into your AI chat, then give it your task.
 3. Copy the model's response containing an `edit:` block.
 4. TULES executes the JSON and writes a structured result to the clipboard.
 5. Paste that result back into the model.
@@ -124,47 +277,28 @@ command; batches are sequential and are not transactional.
 
 ## Universal replacement
 
-`replace` is the canonical string and block replacement action:
+`replace` is the canonical string and block replacement action. It takes the path as
+`file` or `file_path`, the existing text as `old_string`/`old_str`/`search`, and the new
+text as `new_string`/`new_str`/`replace_with`.
 
 ```text
 edit:
-{
-  "action":"replace",
-  "file":"src/app.py",
-  "old_string":"def old_name():\n    return 1",
-  "new_string":"def new_name():\n    return 2"
-}
+{"action":"replace","file":"src/app.py","old_string":"def old_name():","new_string":"def new_name():"}
 endedit
 ```
 
-Accepted field variants:
+One universal engine tries, in order: unique exact match; quote-normalized match with
+typography preserved; whitespace-insensitive multiline match with indentation adapted;
+token-equivalent lines; Python AST function/class match; then a confidence-gated context
+or fuzzy match. It never silently picks among duplicates — on an ambiguous match, add
+`context_before`/`context_after`, pass `match_id`, or set `replace_all: true`.
+`confidence_threshold` moves the fuzzy floor and `reason` labels the edit. An empty
+search creates a missing file or fills an empty one, but cannot overwrite a non-empty
+file.
 
-| Purpose | Fields |
-| --- | --- |
-| Path | `file` or `file_path` |
-| Existing text | `old_string`, `old_str`, or `search` |
-| Replacement text | `new_string`, `new_str`, or `replace_with` |
-| Disambiguation | `context_before`, `context_after`, or `match_id` |
-| Replace every occurrence | `replace_all: true` |
-| Fuzzy matching floor | `confidence_threshold` |
-| Audit label | `reason` |
-
-The replacement cascade is:
-
-1. unique exact match;
-2. straight/curly quote-normalized match with typography preservation;
-3. whitespace-insensitive multiline match with indentation adaptation;
-4. token-equivalent line match;
-5. Python function/class AST match;
-6. confidence-gated context or fuzzy match.
-
-It will not silently choose among unresolved duplicates. An empty search creates a
-missing file or fills an empty file, but cannot overwrite a non-empty file.
-
-Older action names remain accepted for existing integrations, but all route to the same
-engine: `edit`, `str_replace`, `surgical_replace`, `context_replace`,
-`search_and_replace_all`, `smart_replace`, and `confirm_smart_replace`. New integrations
-should use `replace`.
+Older names (`edit`, `str_replace`, `surgical_replace`, `context_replace`,
+`search_and_replace_all`, `smart_replace`, `confirm_smart_replace`) still route here;
+new integrations should use `replace`.
 
 ## Available actions
 
@@ -221,7 +355,7 @@ Action names are case-insensitive.
 | `run` | Backward-compatible alias for Bash |
 | `validate_batch` | Preflight supported commands without applying them |
 | `memory` | Read, append to, or list local notes (`scratchpad`, `todo`, or any custom target) |
-| `list_actions` / `help` | List the live action registry |
+| `list_actions` / `help` | Serve the live action index, or one action's usage via `name` |
 
 For exact schemas, return fields, failure modes, and examples for every action, see
 [AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md).
@@ -253,15 +387,11 @@ Use `--no-shell` when command execution should be unavailable.
 
 ## Web tools
 
-Search Google without an API key:
-
-```text
-edit:
-{"action":"web_search","query":"Python pathlib documentation","limit":5}
-endedit
-```
-
-Retrieve a readable page, its original HTML, parsed JSON, links, or structured elements:
+`web_search` queries Google without an API key. `web_fetch` retrieves a page as text,
+HTML, JSON, links, or filtered elements (`mode`, plus `tag`/`id`/`class`), and pages
+long results with `start_line`/`end_line` or `start_char`/`end_char`. `download_url`
+saves a file into the workspace, refusing to clobber an existing one unless
+`overwrite: true`.
 
 ```text
 edit:
@@ -269,93 +399,85 @@ edit:
 endedit
 ```
 
-Text can be paged with `start_line`/`end_line`, and HTML with `start_char`/`end_char`.
-`mode: "elements"` accepts optional `tag`, `id`, and `class` filters plus `offset` and
-`limit`. `mode: "links"` resolves relative links against the final page URL. Responses
-include the final URL after redirects, HTTP status, content type, byte count, title, and
-page metadata. `mode: "html"` returns source HTML, while `mode: "json"` decodes JSON.
-
-Download a linked file using `download_url`; provide `file` when the URL does not contain
-a useful filename. Existing files are refused unless `overwrite: true`, in which case the
-old file is backed up first. Network tools allow only public HTTP(S) destinations, reject
-credentials and private/local/reserved addresses, validate redirects, enforce timeouts,
-and cap response sizes. Google markup and anti-automation behavior can change, so search
-may occasionally return fewer results; direct `web_fetch` remains available.
+All three allow only public HTTP(S) destinations: they reject credentials and
+private, local, or reserved addresses, validate redirects, enforce timeouts, and cap
+response sizes. Search parses Google's HTML and has no stability guarantee — when the
+markup changes it returns fewer results or none, and `web_fetch` remains available.
+Full parameter reference is in [AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md).
 
 ## Safety model
 
-### Workspace confinement
+**Workspace confinement.** Paths resolve against the configured root. Escaping via `..`,
+absolute outside paths, or symlinks is rejected.
 
-Paths are resolved against the configured workspace. Escaping through `..`, absolute
-outside paths, or resolving symlinks is rejected.
+**Backups.** Files are copied under `.tules_backups/` before mutation, with mirrored
+directories and timestamped names; rapid edits in the same second get unique backups
+rather than overwriting history. The newest ten per file are kept. Writes are atomic
+same-directory replacements that preserve permissions, so an interrupted write cannot
+leave a partial file. `undo` restores that file's latest backup — one step, not a stack.
 
-### Backups
+**Write guards**, applied before a create, overwrite, replacement, insertion, deletion,
+or line replacement, with the original left untouched on refusal:
 
-Existing files are copied under `.tules_backups/` before mutation. Directory structure
-is mirrored and filenames include timestamps. Rapid edits in the same second receive
-unique backups instead of overwriting history. Only the newest ten backups of each file
-are kept; older ones are pruned automatically. Writes use an atomic same-directory
-replacement and preserve existing file permissions, so an interrupted write cannot leave
-a partially written target. `undo` restores the latest backup for the requested file.
+| Files | Check | Catches |
+| --- | --- | --- |
+| `.py` | compiled with the real parser | any syntax error |
+| `.json` | parsed | any malformed JSON |
+| `.js` `.jsx` `.mjs` `.cjs` `.ts` `.tsx` `.java` `.cs` `.kt` `.scala` `.c` `.h` `.cpp` `.hpp` `.cc` `.go` `.rs` `.php` `.swift` | bracket balance | an edit that leaves `()`, `[]`, or `{}` unbalanced |
+| everything else | none | nothing — the backup is your safety net |
 
-### Syntax guard
+The bracket check is not a parser. It judges the edit against the original file, so it
+refuses only when a balanced file becomes unbalanced; a file it cannot lex (a raw string,
+a regex literal) is left alone rather than blocked. It will not catch a type error or a
+wrong identifier — build or test after editing these languages.
 
-Before committing a create, overwrite, replacement, insertion, deletion, or line
-replacement, TULES validates the resulting file: `.py` is compiled and `.json` is parsed.
-Invalid Python or JSON is rejected and the original remains unchanged.
+**Ignored files.** `search`, `grep`, and `glob` skip what the workspace's `.gitignore`
+excludes, so build output and secret files do not reach the chat. A file named directly
+is still read, so this reduces noise and accidental exposure — it is not a security
+boundary. `--all-files` turns it off.
 
-### Line endings
+**Line endings.** Normalized internally; existing LF or CRLF is restored on save.
 
-Text is normalized internally, while existing LF or CRLF style is restored on save.
-
-### Automatic review
-
-After successful mutations, TULES reviews the target when its path is present in the
-payload and attaches a limited set of findings as warnings.
+**Automatic review.** After a successful mutation, TULES reviews the target when its path
+is in the payload and attaches findings as warnings.
 
 ## Project organization
 
 ```text
 tules/
-  agent.py          dispatch and automatic post-edit review
+  agent.py          dispatch, post-edit review, and usage-on-misuse
   registry.py       command registration, aliases, and argument helpers
-  commands/
-    file_tools.py   reads, writes, search, notebooks, backups, and memory
-    edits.py        universal replace, line edits, and diff preview
-    search.py       native literal/regex/fuzzy and dependency searches
-    review.py       analysis, review, and batch validation
-    shell.py        Bash and PowerShell execution
+  guide.py          the bootstrap prompt and the per-action usage help serves
+  commands/         one module per family: file_tools, edits, search, review,
+                    shell, web — each registers its actions in the registry
   editor.py         replacement cascade, mutation guards, and file lifecycle
+  structure.py      bracket-balance guard for the brace languages
   matching.py       normalization, indentation, and fuzzy block scoring
   workspace.py      path confinement, encoding, writes, and backups
+  ignores.py        .gitignore parsing, so search skips excluded files
   analysis.py       symbols, reviews, duplicate and dependency analysis
   protocol.py       edit-block extraction and tolerant JSON decoding
-  formatting.py     plain-text result rendering
+  formatting.py     result rendering and the context budget
   monitor.py        clipboard loop
   cli.py            command-line interface
 tests/              unit and integration tests
 AI_TOOL_GUIDE.md    complete model-facing operating manual
 ```
 
-The modules intentionally separate protocol, workspace access, matching, mutation,
-analysis, and command adapters so future contributors—or another AI model—can modify one
-area without reverse-engineering the whole project.
+Protocol, workspace access, matching, mutation, analysis, and command adapters are kept
+separate so a contributor — or another AI model — can change one area without
+reverse-engineering the whole project.
 
 ## Testing
 
 ```sh
 pytest -q
-```
-
-The suite includes unit tests, full action integration coverage, universal replacement
-edge cases, path confinement, syntax guards, Bash behavior, and PowerShell availability
-and command construction.
-
-For linting:
-
-```sh
 ruff check tules tests
 ```
+
+The suite covers every action end to end, replacement edge cases, path confinement, the
+write guards, the context budget, `.gitignore` handling, and shell behavior. A few tests
+depend on POSIX permissions or Bash and are expected to fail on Windows.
 
 ## Contributing
 

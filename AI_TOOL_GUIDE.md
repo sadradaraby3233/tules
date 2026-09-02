@@ -1,9 +1,25 @@
 # TULES — Complete AI Controller Manual
 
-> **Audience:** this file is designed to be pasted into, attached to, or otherwise made
-> available to the AI model controlling TULES. It is intentionally exhaustive. Human
-> users looking for installation, a short feature overview, and contributor guidance
-> should read [README.md](README.md).
+> **You probably do not need to paste this file.** It is roughly fifty thousand
+> characters. On a small or free context window that crowds out the actual work and is
+> what makes a model drift and invent commands. Instead run:
+>
+> ```sh
+> tules --prompt --copy
+> ```
+>
+> and paste that ~990 character bootstrap. TULES serves the rest of its documentation on
+> demand: `{"action":"help"}` returns the whole action index in ~860 characters, and
+> `{"action":"help","name":"<action>"}` returns one action's arguments and a working
+> example. A misused action answers with its own usage, so a wrong guess costs no extra
+> round trip. A complete six-turn session costs roughly 1,300 tokens.
+> See [`list_actions` / `help`](#list_actions--help) and
+> [Result windowing](#23-result-windowing-and-truncation).
+>
+> **Audience:** this file remains the exhaustive reference — for humans, for models with
+> context to spare, and for anything the on-demand help does not cover, such as the
+> recovery playbook and the worked examples. Human users looking for installation, a
+> short feature overview, and contributor guidance should read [README.md](README.md).
 >
 > **Purpose:** this document is the model's operating contract and complete command
 > reference. It describes the current, model-independent TULES protocol.
@@ -132,9 +148,12 @@ STATUS: SUCCESS
 - `WARNINGS` usually contains post-edit static-review findings. Decide whether each is
   pre-existing, harmless, or introduced by your change.
 - `ERRORS` contains additional explicit errors when present.
-- Long scalar values are clipped around 2,000 characters in clipboard rendering.
+- Long scalar values are clipped to a budget the human running TULES chooses (2,000
+  characters by default). A clipped value says so explicitly — see section 23.
 - Lists show at most 15 entries in rendered output even when command metadata reports
   more. Narrow the query or paginate if needed.
+- `search`, `grep`, and `glob` skip files the workspace's `.gitignore` excludes. A file
+  absent from search results may still exist; read it by name if you know it is there.
 
 ## 4. Golden operating workflow
 
@@ -266,7 +285,8 @@ status. Earlier successful mutations remain applied and backed up.
 
 ### `Unknown action`
 
-Use `list_actions` or `help`. Check spelling and parameter naming.
+Send `{"action":"help"}` for the index, then `{"action":"help","name":"<action>"}` for
+the exact arguments. Never guess an action name or a parameter spelling.
 
 ### `File not found` / `Path does not exist`
 
@@ -1153,9 +1173,9 @@ they do not make untrusted downloaded content safe to execute.
 
 ### `list_actions` / `help`
 
-List registered actions and summaries.
+TULES' own documentation server. This is how a model works without carrying this manual.
 
-**Input:** optional `limit`. A zero/default limit returns all actions.
+**Input:** optional `name`. Omit it for the index; pass an action name for its full usage.
 
 ```text
 edit:
@@ -1163,7 +1183,36 @@ edit:
 endedit
 ```
 
-Use when the live installation may differ from this manual.
+Returns every action grouped by purpose, with each action's required arguments, in
+roughly 760 characters:
+
+```text
+READ    read_file(file) view(file) read(file_path) glob(pattern) list_files()
+SEARCH  search(search) search_regex(search) search_fuzzy(search) grep(pattern)
+EDIT    replace(file,old_string,new_string) replace_by_line(file,line_start,line_end) ...
+```
+
+Pass `name` for one action's arguments, caveat, and a copyable example:
+
+```text
+edit:
+{"action":"help","name":"replace"}
+endedit
+```
+
+```text
+replace - Universally locate and safely replace text
+  required: file, old_string, new_string
+  optional: context_before, context_after, match_id, replace_all, confidence_threshold, reason
+  note: one universal engine: exact, then unique, then context-anchored, then fuzzy. ...
+  example: {"action":"replace","file":"src/app.py","old_string":"def run(","new_string":"def start("}
+```
+
+`name` accepts compatibility aliases, so `"name":"str_replace"` returns the `replace`
+usage. An unrecognized name fails and returns the index instead of guessing.
+
+Prefer this over trusting this manual: it is generated from the live registry, so it
+always describes the installation actually running.
 
 ## 17. Shell execution
 
@@ -1236,18 +1285,33 @@ on existing targets. A failed or interrupted write therefore leaves the previous
 intact rather than exposing partial content. Backups are a safety net, not a substitute
 for careful edits or version control.
 
-## 20. Syntax guard
+## 20. Write guards
 
-Every edit routed through the editor and every create/write is validated before it is
-committed. A `.py` file is compiled and a `.json` file is parsed. If the result is
-invalid:
+Every edit and every create/write is validated before it is committed. What is checked
+depends on the file, and you must know which level of protection you are working under:
+
+| Files | Check | What it catches |
+| --- | --- | --- |
+| `.py` | compiled with the real parser | any syntax error |
+| `.json` | parsed | any malformed JSON |
+| `.js` `.jsx` `.mjs` `.cjs` `.ts` `.tsx` `.java` `.cs` `.kt` `.scala` `.c` `.h` `.cpp` `.hpp` `.cc` `.go` `.rs` `.php` `.swift` | bracket balance | an edit leaving `()`, `[]`, `{}` unbalanced |
+| everything else (YAML, TOML, HTML, CSS, SQL, Markdown, shell) | none | nothing |
+
+When a check fails:
 
 - the write is refused,
 - the original file remains intact,
-- response details include the error (`SyntaxError` for Python, `JSONDecodeError` for JSON),
+- details include the error (`SyntaxError`, `JSONDecodeError`, or the bracket imbalance),
 - edit failures include nearby source as `blast_radius` when available.
 
-This protects syntax, not behavior. Tests and reviews are still required.
+The bracket check is not a parser. It compares the edited file against the original, so
+it only refuses when a balanced file becomes unbalanced, and it stands aside on a file it
+cannot lex. **It will not catch a type error, a missing semicolon, or a wrong
+identifier.** For every language outside `.py` and `.json`, treat a successful write as
+unverified until you have run the project's build, linter, or tests.
+
+For the unguarded formats a broken edit is written to disk. Preview with `diff_preview`
+first, and re-read the file afterwards.
 
 ## 21. Newline and encoding behavior
 
@@ -1269,9 +1333,66 @@ verification.
 
 ---
 
+## 23. Result windowing and truncation
+
+Every value TULES returns is capped so a reply cannot swallow your context window. The
+cap defaults to 2,000 characters and the human running TULES can change it with
+`--budget`, so do not assume a fixed size. Read what the reply tells you.
+
+When a value is cut, the reply says so explicitly:
+
+```text
+[TRUNCATED: 16,480 of 18,480 characters withheld after this point. You have NOT seen
+the whole value. Request a narrower range before relying on it.]
+```
+
+Treat that as a hard stop. You have not read the file. Do not write a `replace` whose
+`old_string` comes from anywhere near the cut.
+
+`read`, `read_file`, and `view` window themselves to fit, and hand you the command to
+continue:
+
+```text
+MESSAGE: Read lines 1-64 of src/app.py
+DETAILS:
+  total_lines: 547
+  truncated: True
+  next: {"action":"read_file","file":"src/app.py","start_line":65}  (483 of 547 lines still unread)
+```
+
+Send the `next` command to continue, or narrow your request with `start_line`/`end_line`
+(or `offset`/`limit`) if you only need one region. Prefer narrowing: `grep` or
+`extract_symbols` to find the region, then read only that region. Reading a whole large
+file page by page is the most expensive thing you can do.
+
+`stdout` and `stderr` are cut from the **front**, not the back, because a test, build, or
+lint run states its verdict last. If you need the earlier part of a long run, re-run the
+command with its own filter (`| tail -40`, `-q`, `--quiet`) rather than asking TULES for
+more.
+
+## 24. Recovering from a misuse without spending a turn
+
+You do not need to look up an action before trying it. If you call one with a missing or
+malformed argument, the failure carries that action's full usage:
+
+```text
+STATUS: FAILED
+MESSAGE: Missing one of: old_string, old_str, search
+DETAILS:
+  content:
+    replace - Universally locate and safely replace text
+      required: file, old_string, new_string
+      optional: context_before, context_after, match_id, replace_all, ...
+      example: {"action":"replace","file":"src/app.py","old_string":"def run(","new_string":"def start("}
+```
+
+An unrecognized action name returns the whole index the same way. So guessing is cheaper
+than asking: attempt the command, and correct yourself from the reply if it was wrong.
+A failed command never modifies anything.
+
 # Part IV — High-quality AI examples
 
-## 23. Example: investigate before editing
+## 25. Example: investigate before editing
 
 User asks: “Rename `build_widget` to `create_widget` everywhere.”
 
@@ -1290,7 +1411,7 @@ Then read the definition and representative call sites. Only after confirming se
 scope should you issue exact edits in each file, followed by another grep proving zero
 stale references and a test command.
 
-## 24. Example: safe unique function edit
+## 26. Example: safe unique function edit
 
 Read first:
 
@@ -1319,7 +1440,7 @@ edit:
 endedit
 ```
 
-## 25. Example: recover from ambiguity
+## 27. Example: recover from ambiguity
 
 If strict replacement returns three occurrences, do not choose first blindly:
 
@@ -1337,7 +1458,7 @@ edit:
 endedit
 ```
 
-## 26. Example: contextual recovery from formatting drift
+## 28. Example: contextual recovery from formatting drift
 
 ```text
 edit:
@@ -1347,7 +1468,7 @@ endedit
 
 If confidence is low, read the file. Do not keep lowering the threshold.
 
-## 27. Example: multi-file independent batch
+## 29. Example: multi-file independent batch
 
 After all exact targets have already been inspected:
 
@@ -1364,7 +1485,7 @@ endedit
 Then run search and tests in a subsequent turn because their interpretation depends on
 the edit result.
 
-## 28. Example: create a new file safely
+## 30. Example: create a new file safely
 
 ```text
 edit:
@@ -1374,7 +1495,7 @@ endedit
 
 Use `create_file` instead of `Write` when accidental overwrite must be impossible.
 
-## 29. Example: project verification batch
+## 31. Example: project verification batch
 
 ```text
 edit:
@@ -1392,7 +1513,7 @@ Read all three statuses. A successful review does not compensate for failed test
 
 # Part V — Anti-patterns the AI must avoid
 
-## 30. Never do these
+## 32. Never do these
 
 1. **Do not hallucinate file contents.** Read or search first.
 2. **Do not claim execution without a TULES result.** A proposed command is not success.
@@ -1410,7 +1531,7 @@ Read all three statuses. A successful review does not compensate for failed test
 14. **Do not repeat the same failing command unchanged.** Use error details to adapt.
 15. **Do not make unrelated cleanup changes.** Keep scope aligned with the request.
 
-## 31. Definition of done
+## 33. Definition of done
 
 A task is complete only when all applicable statements are true:
 
@@ -1428,7 +1549,7 @@ A task is complete only when all applicable statements are true:
 
 # Part VI — Human installation and operation
 
-## 32. Installation
+## 34. Installation
 
 Python 3.9 or newer is required. Runtime dependency: `pyperclip`.
 
@@ -1443,7 +1564,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-## 33. Running TULES
+## 35. Running TULES
 
 ```sh
 tules .                  # watch clipboard; use current directory as workspace
@@ -1464,7 +1585,7 @@ Operational loop:
 6. Paste that result into the AI conversation.
 7. Repeat until the AI verifies and completes the task.
 
-## 34. Repository layout
+## 36. Repository layout
 
 ```text
 tules/
@@ -1496,7 +1617,9 @@ tests/              automated test suite
 DISCOVER: analyze -> Glob/Grep -> view/Read -> extract_symbols/impact_check
 EDIT:     replace (universal cascade + context/match_id/replace_all) -> line edit
 VERIFY:   view/Read -> review -> run tests/lint/build -> Grep for stale references
-RECOVER:  read exact text; never guess, force replace-all, or ignore failures
+RECOVER:  read exact text; never force replace-all or ignore failures
+WINDOW:   truncated:true means you have NOT seen it all; send the `next` command
+USAGE:    a misused action replies with its own usage; help gives the index
 FORMAT:   edit:\n{"action":"...", ...}\nendedit
 ```
 

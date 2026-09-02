@@ -3,9 +3,10 @@
 from typing import Any, Dict, List
 
 from . import commands  # noqa: F401
+from . import guide
 from .analysis import CodeAnalyzer, Reviewer
 from .editor import Editor
-from .errors import TulesError
+from .errors import ArgumentError, TulesError
 from .models import Result
 from .registry import describe, lookup
 from .search import Searcher
@@ -24,8 +25,9 @@ class Agent:
 		allow_shell: bool = True,
 		shell_timeout: int = SHELL_TIMEOUT,
 		auto_review: bool = True,
+		respect_ignores: bool = True,
 	):
-		self.workspace = Workspace(root)
+		self.workspace = Workspace(root, respect_ignores=respect_ignores)
 		self.editor = Editor(self.workspace)
 		self.searcher = Searcher(self.workspace)
 		self.analyzer = CodeAnalyzer()
@@ -48,6 +50,8 @@ class Agent:
 		try:
 			command = lookup(action)
 			result = command.handler(self, payload)
+		except ArgumentError as exc:
+			return Result.fail(exc.message, **{**self._teach(action), **exc.details})
 		except TulesError as exc:
 			return Result.fail(exc.message, **exc.details)
 		except Exception as exc:
@@ -55,6 +59,11 @@ class Agent:
 		if result.success and command.mutates and self.auto_review:
 			self._append_review(result, payload)
 		return result
+
+	def _teach(self, action: str) -> Dict[str, Any]:
+		"""Answer a misuse with the usage for it, so recovery costs no extra round trip."""
+		name = guide.resolve(action)
+		return {"content": guide.detail(name) if name else guide.index()}
 
 	def run_batch(self, payloads: List[Any]) -> List[Result]:
 		return [self.run(payload) for payload in payloads]
