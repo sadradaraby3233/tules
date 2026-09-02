@@ -10,7 +10,7 @@ automatic click would have, so the loop can carry straight on with the text it
 put on the clipboard.
 """
 
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from .page import BrowserPage
 from .profiles import ProfileStore, SiteProfile, normalize_host, valid_selector
@@ -80,7 +80,7 @@ class Teacher:
 		self.poll_seconds = poll_seconds
 		self.timeout_seconds = timeout_seconds
 
-	def learn(self, kind: str, host: str) -> tuple[Element, Optional[SiteProfile]]:
+	def learn(self, kind: str, host: str) -> Tuple[Element, Optional[SiteProfile]]:
 		"""Interactively identify ``kind`` (``input`` or ``copy``) and save it."""
 		self.report(INPUT_INSTRUCTIONS if kind == "input" else COPY_INSTRUCTIONS)
 		self.page.reset_teach(kind)
