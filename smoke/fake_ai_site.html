@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FakeChat — a simulated AI chat</title>
+<style>
+	body { font-family: system-ui, sans-serif; margin: 0; background: #131417; color: #e8e8e8; }
+	#app { max-width: 760px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: 100vh; }
+	header { opacity: 0.7; font-size: 13px; margin-bottom: 8px; }
+	#thread { flex: 1; overflow-y: auto; border: 1px solid #2a2c33; border-radius: 8px; padding: 12px; }
+	.msg { margin: 10px 0; padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; }
+	.msg.user { background: #1f2937; align-self: flex-end; max-width: 80%; }
+	.msg.assistant { background: #17181c; border: 1px solid #2a2c33; }
+	.msg .content.streaming::after { content: "▍"; animation: blink 1s infinite; }
+	@keyframes blink { 50% { opacity: 0; } }
+	.toolbar { margin-top: 8px; display: flex; gap: 6px; }
+	.toolbar button, #composer button { background: #26282f; color: #e8e8e8; border: 1px solid #3a3d46;
+		border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+	#composer { display: flex; gap: 8px; padding-top: 10px; align-items: flex-end; }
+	#prompt-input { flex: 1; min-height: 64px; background: #1b1d22; color: #e8e8e8;
+		border: 1px solid #3a3d46; border-radius: 8px; padding: 8px; font: inherit; }
+	#search { width: 140px; background: #1b1d22; color: #9aa; border: 1px solid #3a3d46;
+		border-radius: 6px; padding: 4px 8px; }
+	#stop-btn { display: none; background: #7f1d1d; }
+	.stream-notes { opacity: 0.5; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+	<header>
+		FakeChat — a simulated AI chat website for smoke-testing TULES browser automation.
+		Streaming, the Copy button, and the send flow behave like a real chat UI.
+	</header>
+	<div id="thread"></div>
+	<div id="composer">
+		<textarea id="prompt-input" data-testid="chat-input" placeholder="Message FakeChat"></textarea>
+		<button id="send-btn" aria-label="Send message" title="Send">Send</button>
+		<button id="stop-btn" aria-label="Stop generating" title="Stop">■ Stop</button>
+		<input id="search" placeholder="Search chats" aria-label="Search chats">
+	</div>
+</div>
+<script>
+"use strict";
+const thread = document.getElementById("thread");
+const input = document.getElementById("prompt-input");
+const sendBtn = document.getElementById("send-btn");
+const stopBtn = document.getElementById("stop-btn");
+
+const params = new URLSearchParams(location.search);
+const RATE = Number(params.get("rate") || 220);        // characters per second
+const LATENCY = Number(params.get("latency") || 400);  // ms before the first chunk
+const BROKEN_COPY = params.get("brokenCopy") === "1";  // first Copy click does nothing
+
+let turns = 0;
+let streamer = null;
+window.__tulesLastCopied = "";   // mirror for headless smoke runs
+let copyHasFailedOnce = false;
+
+function el(tag, cls, text) {
+	const node = document.createElement(tag);
+	if (cls) node.className = cls;
+	if (text !== undefined) node.textContent = text;
+	return node;
+}
+
+function decideReply(userText) {
+	if (userText.includes("TULES - you are the brain")) {
+		return "Understood, I am the brain. Inspecting the target file first.\n\n"
+			+ "edit:\n" + JSON.stringify({ action: "view", file: "hello.txt" }) + "\nendedit";
+	}
+	if (userText.includes("hello.txt") && userText.includes("STATUS: SUCCESS")) {
+		return "Now I will make the requested edit.\n\nedit:\n" + JSON.stringify({
+			action: "replace", file: "hello.txt",
+			old_string: "WORLD", new_string: "TULES WAS HERE",
+		}) + "\nendedit";
+	}
+	if (userText.includes("TULES WAS HERE")) {
+		return "The edit is verified and the task is complete. No further commands needed.";
+	}
+	return "edit:\n" + JSON.stringify({ action: "view", file: "hello.txt" }) + "\nendedit";
+}
+
+function addToolbar(message, includeCopy) {
+	const toolbar = el("div", "toolbar");
+	toolbar.appendChild(makeButton("Copy link", "link-btn"));
+	if (includeCopy) toolbar.appendChild(makeButton("Copy", "copy-btn"));
+	toolbar.appendChild(makeButton("Copy code", "code-btn"));
+	message.appendChild(toolbar);
+}
+
+function makeButton(label, cls) {
+	const button = el("button", cls, label);
+	button.setAttribute("aria-label", label);
+	button.addEventListener("click", (event) => {
+		if (label !== "Copy") return;
+		const text = event.target.closest(".msg").querySelector(".content").innerText;
+		doCopy(text, button);
+	});
+	return button;
+}
+
+function doCopy(text, button) {
+	if (BROKEN_COPY && !copyHasFailedOnce) {
+		copyHasFailedOnce = true;           // simulate a flaky first click
+		button.textContent = "Retrying…";
+		setTimeout(() => { button.textContent = "Copy"; }, 800);
+		return;
+	}
+	window.__tulesLastCopied = text;
+	if (navigator.clipboard && navigator.clipboard.writeText) {
+		navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+	} else {
+		legacyCopy(text);
+	}
+}
+
+function legacyCopy(text) {
+	const helper = el("textarea");
+	helper.value = text;
+	document.body.appendChild(helper);
+	helper.select();
+	try { document.execCommand("copy"); } catch (err) { /* headless fallback */ }
+	helper.remove();
+}
+
+function stopStreaming() {
+	if (streamer) { clearTimeout(streamer.timer); streamer = null; }
+	stopBtn.style.display = "none";
+	sendBtn.style.display = "";
+	document.querySelectorAll(".content.streaming").forEach((node) => node.classList.remove("streaming"));
+	const last = thread.querySelector(".msg.assistant:last-child");
+	if (last) addToolbar(last, true);
+}
+
+stopBtn.addEventListener("click", stopStreaming);
+
+function submit() {
+	const text = input.value;
+	if (!text.trim() || streamer) return;
+	input.value = "";
+	turns += 1;
+	const user = el("div", "msg user", text);
+	user.setAttribute("data-message-author-role", "user");
+	thread.appendChild(user);
+
+	const message = el("div", "msg assistant");
+	message.setAttribute("data-message-author-role", "assistant");
+	const content = el("div", "content streaming", "");
+	message.appendChild(content);
+	thread.appendChild(message);
+
+	const full = decideReply(text);
+	let produced = 0;
+	sendBtn.style.display = "none";
+	stopBtn.style.display = "";
+	const started = Date.now() + LATENCY;
+
+	function tick() {
+		if (Date.now() < started) { streamer.timer = setTimeout(tick, 40); return; }
+		produced = Math.min(full.length, produced + Math.max(1, Math.round(RATE / 25)));
+		content.textContent = full.slice(0, produced);
+		if (produced >= full.length) { stopStreaming(); return; }
+		streamer.timer = setTimeout(tick, 40);
+	}
+	streamer = { timer: setTimeout(tick, 40) };
+	thread.scrollTop = thread.scrollHeight;
+}
+
+sendBtn.addEventListener("click", submit);
+input.addEventListener("keydown", (event) => {
+	if (event.key === "Enter" && !event.shiftKey) {
+		event.preventDefault();
+		submit();
+	}
+});
+input.focus();
+</script>
+</body>
+</html>

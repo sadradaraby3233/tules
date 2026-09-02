@@ -11,12 +11,9 @@ JSON commands can inspect and modify a local project through TULES:
 
 > **Using TULES with an AI model?** Run `tules --prompt --copy` and paste the result into
 > the chat. That is under a thousand characters, and it is all the model needs: TULES
-> serves the rest of its own documentation on demand. See
-> [Working inside a small context window](#working-inside-a-small-context-window).
->
-> The full manual, **[AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md)**, is still there as the human
-> reference and for models with a large context to spare. This README is intentionally
-> shorter and intended for repository users and contributors.
+> serves the rest of its own documentation on demand. The full manual,
+> **[AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md)**, remains the human reference for models with
+> context to spare.
 
 ## Working inside a small context window
 
@@ -24,24 +21,13 @@ TULES is designed for the realistic case: a free chatbot account with a short co
 window, and a human doing the copying. Nothing is automated against any chat service —
 you copy a block out and paste a result back, which is why TULES never needs an API key
 or a login. It also means every round trip costs you an action, so the design spends
-bytes and round trips carefully.
+bytes and round trips carefully. Three things follow from that.
 
-Three things follow from that.
-
-**1. You do not paste the manual.** Run:
-
-```bash
-tules --prompt --copy
-```
-
-That is a 992 character bootstrap: the `edit: ... endedit` envelope, how to read a
-result, four rules, and one escape hatch. TULES serves the rest of its own documentation
-on demand.
-
-| Command | Returns | Size |
-| --- | --- | --- |
-| `{"action":"help"}` | every action, grouped, with its required arguments | ~860 characters |
-| `{"action":"help","name":"replace"}` | that action's arguments, caveat, and a working example | ~300–550 characters |
+**1. You do not paste the manual.** `tules --prompt --copy` produces a 992 character
+bootstrap: the `edit: ... endedit` envelope, how to read a result, four rules, and one
+escape hatch. TULES serves the rest of its own documentation on demand: `help` returns
+every action with its arguments (~860 characters), and `help` with a `name` returns one
+action's usage and example (~300–550 characters).
 
 **2. A wrong guess costs no round trip.** If a command is called with a missing or
 malformed argument, the failure carries that action's usage, and an unknown action name
@@ -50,31 +36,16 @@ turn asking. Guessing is cheaper than looking up, so the prompt tells it to gues
 
 **3. Results are windowed, and say so.** Every value the model sees is capped. When a
 value is cut, the reply says so in words rather than in a quiet footnote, and reads
-return the exact command to continue:
-
-```text
-MESSAGE: Read lines 1-64 of tules/editor.py
-DETAILS:
-  total_lines: 547
-  truncated: True
-  next: {"action":"read_file","file":"tules/editor.py","start_line":65}  (483 of 547 lines still unread)
-```
-
-Command output is cut from the *front* instead, because a test or build run states its
-verdict last. Use `--budget` to match your chatbot:
-
-```bash
-tules . --budget 800     # small free-tier window
-tules . --budget 4000    # a model with room to spare
-```
+return the exact command to continue — for example `next: {"action":"read_file",...}`
+with the following offset. Command output is cut from the *front* instead, because a
+test or build run states its verdict last. Use `--budget` to match your chatbot
+(`tules . --budget 800` for a small free-tier window, `--budget 4000` for more room).
 
 A complete six-turn session at `--budget 800` — bootstrap, discovery, a file read, a
 wrong guess, the edit, and verification — costs about **1,300 tokens, roughly 16% of an
 8k window**. Pasting `AI_TOOL_GUIDE.md` instead costs about 12,700 tokens, which does
-not fit at all.
-
-Because the usage table is checked against the live registry by the test suite, what
-`help` returns cannot drift away from what the code does.
+not fit at all. Because the usage table is checked against the live registry by the
+test suite, what `help` returns cannot drift away from what the code does.
 
 ## Highlights
 
@@ -87,6 +58,9 @@ Because the usage table is checked against the live registry by the test suite, 
 - Literal, regex, fuzzy, glob, and filtered content search across many languages.
 - Bash and PowerShell execution, web search and retrieval, notebook cell editing, static
   review, symbol extraction, dependency checks, and batch validation.
+- Optional browser automation (`tules --auto`): press Ctrl+F12 and TULES drives the
+  paste / Enter / wait / Copy loop in your own browser. See
+  [Automating the browser](#automating-the-browser-ctrlf12).
 
 ## Requirements
 
@@ -95,20 +69,17 @@ Because the usage table is checked against the live registry by the test suite, 
 - A working system clipboard
 - Bash for the `bash` and backward-compatible `run` actions
 - PowerShell 7 (`pwsh`) or Windows PowerShell for the optional `powershell` action
+- For `--auto` only: `pip install "tules[browser]"`, a Chromium-family browser
+  (Chrome, Edge, Brave, Chromium) started with a remote-debugging port
 
 ## Installation
 
 From a clone of this repository:
 
 ```sh
-pip install -e .
-```
-
-For development:
-
-```sh
-pip install -e ".[dev]"
-pytest
+pip install -e .            # the clipboard agent
+pip install -e ".[browser]" # + the Ctrl+F12 browser loop
+pip install -e ".[dev]"     # + the test suite
 ```
 
 ## Running TULES
@@ -128,9 +99,59 @@ tules . --budget 800     # shrink results to suit a small context window
 tules . --actions        # print all registered actions
 tules . --no-shell       # disable Bash, PowerShell, and run
 tules . --exec cmd.json  # execute one JSON payload file and exit
+tules . --auto           # arm the Ctrl+F12 browser loop (see below)
 ```
 
 The supplied directory is the workspace root. File tools cannot escape it.
+
+## Automating the browser (Ctrl+F12)
+
+The manual clipboard loop works with any chat in any browser, but you are the
+transport: paste, Enter, wait, Copy, paste, Enter, dozens of times. The
+optional automation removes exactly that — nothing else. It drives the chat in
+your own browser through the DevTools protocol, and the agent protocol is
+unchanged: AI response → Copy button → clipboard → TULES → reply on clipboard
+→ edit box → Enter.
+
+First time setup:
+
+```sh
+pip install "tules[browser]"        # websocket-client + pynput
+tules --launch-browser chrome       # starts a browser with the debug port...
+tules . --auto                      # ...then run TULES in your project folder
+```
+
+Then, by hand, one last time: open the AI chat, start a new chat, focus the
+message box, and press **Ctrl+F12**. From that moment TULES pastes its
+bootstrap prompt (plus `--task "..."` if given), presses Enter, waits for the
+response to finish, clicks Copy, runs what it finds, and pastes its reply back
+— until the AI replies without a command block, or something needs you.
+
+How it stays safe and self-correcting:
+
+- **Element recognition.** The message box and Copy button are located at the
+  DOM level, so window moves and resizes do not matter. Known-site hints are
+  verified before use; anything else is scored heuristically; whatever is
+  learned is saved per website in `~/.tules/browser_sites.json` and reused.
+- **Teaching.** If a site cannot be recognized, TULES asks you to focus the
+  message box (or click the Copy button once) and remembers what you touched.
+  Your teach click still copies, so no turn is wasted. `--forget-site HOST`
+  clears a website's memory.
+- **Never guesses.** An ambiguous box pauses the loop instead of typing into
+  the wrong element; the Copy button is clicked only at a freshly measured
+  rectangle of a confidently identified button.
+- **Completion detection.** Copy is pressed only after the response text has
+  stopped growing while no stop/streaming indicator is visible — streaming,
+  stalls, and long answers are waited out (`--response-timeout`, default
+  600 s), never a fixed sleep.
+- **Resumable pauses.** Every pause (timeout, missed element, clipboard
+  failure) prints the reason and resumes from that step on the next Ctrl+F12.
+  The clipboard monitor keeps working before, between, and after sessions.
+- **Trigger fallback.** Where a global hotkey cannot be grabbed (some Wayland
+  sessions, headless boxes), Enter in the terminal triggers the same loop.
+
+Inspect the smoke area (`smoke/README.md`) to watch the full loop run against
+a simulated AI site in a real browser.
 
 ## What using TULES is actually like
 
@@ -138,38 +159,35 @@ Be clear about the shape of this tool before you start, because it is not an
 autonomous agent and does not pretend to be.
 
 **You are the transport.** TULES never talks to a chat service. There is no API key, no
-login, no browser automation — you copy a command block out of the chat and paste a
-result back. That is what keeps TULES clear of any chat provider's terms, and it is also
-the main cost: **one command block per copy-paste, and you do that by hand.** A small
-change is three or four round trips. A careful multi-file change is fifteen or twenty.
+login — the chat reaches your files only through the clipboard and a human. That is what
+keeps TULES clear of any chat provider's terms, and it is also the main cost: **one
+command block per copy-paste, and you do that by hand.** A small change is three or four
+round trips. A careful multi-file change is fifteen or twenty. (The optional
+[Ctrl+F12 loop](#automating-the-browser-ctrlf12) does the copy-pasting for you, but you
+still watch, and you still review the diff.)
 
 **The model is the brain and it can be wrong.** TULES executes what it is told. The
 guards below catch structural damage, not bad judgement. Every backup, every `STATUS:
 FAILED`, and every review warning is there because a model will, eventually, try
 something wrong.
 
-**A realistic first session:**
+**A realistic first session:** `tules .` in the project, `tules --prompt --copy`, paste
+into the chat, give it the task. It replies with `{"action":"help"}` and
+`{"action":"analyze"}`; you copy that block, TULES runs it and puts the result on your
+clipboard; paste back. It searches, reads the relevant region, proposes an edit; paste,
+run, paste back. It runs your tests through `bash`, reads the failures, fixes them. You
+review `git diff` yourself before committing. Always.
 
-1. `tules .` in the project, `tules --prompt --copy`, paste into the chat.
-2. Give it the task. It replies with `{"action":"help"}` and `{"action":"analyze"}`.
-3. Copy that block. TULES runs it and puts the result on your clipboard. Paste back.
-4. It searches, reads the relevant region, proposes an edit. Paste, run, paste back.
-5. It runs your tests through `bash`, reads the failures, fixes them.
-6. You review `git diff` yourself before committing. Always.
-
-Expect roughly 1,300 tokens of context for a short session at `--budget 800`. Expect to
-spend more of your own attention on copying than on reading the code.
+Expect roughly 1,300 tokens of context for a short session at `--budget 800`.
 
 ### Projects this suits
 
-- **Python**, most of all. It is the only language with a real parser in the write path,
+- **Python**, most of all: the only language with a real parser in the write path,
   AST-aware matching, and syntax refusal before a write lands.
 - **Small and mid-sized codebases** — up to a few hundred files — where you can name the
-  file or describe the symbol. Discovery costs round trips, so a project you already
-  know is much cheaper than one you do not.
-- **Projects with a fast, single-command test suite.** `pytest -q`, `npm test`, `go
-  test ./...`. The verify step is what makes the loop trustworthy, and a slow suite makes
-  it painful.
+  file or describe the symbol; discovery costs round trips.
+- **Projects with a fast, single-command test suite.** The verify step is what makes the
+  loop trustworthy.
 - **Text-shaped work**: config files, documentation, JSON fixtures, scripts, a
   well-contained refactor, adding tests, chasing a specific bug.
 - **Learning or reviewing a codebase**, where `analyze`, `extract_symbols`, and
@@ -177,29 +195,23 @@ spend more of your own attention on copying than on reading the code.
 
 ### Where to be careful
 
-- **Languages other than Python and JSON have a weaker guard.** JavaScript, TypeScript,
-  Go, Rust, Java, C#, C, C++, PHP, and Swift get a bracket-balance check, which refuses an
-  edit that leaves delimiters unbalanced. That catches the common damage from a bad
-  replacement. It is not a parser and will not catch a type error, a missing semicolon,
-  or a wrong identifier. **Run the project's own build or tests after editing them.**
-- **Everything else — YAML, TOML, HTML, CSS, SQL, Markdown, shell — has no write guard at
-  all.** A broken edit is written to disk. The backup is your safety net.
+- **Languages other than Python and JSON have a weaker guard.** The brace languages
+  (JavaScript, TypeScript, Go, Rust, Java, C#, C, C++, PHP, Swift) get a bracket-balance
+  check that refuses an unbalancing edit; it is not a parser. **Run the project's own
+  build or tests after editing them.** Everything else — YAML, TOML, HTML, CSS, SQL,
+  Markdown, shell — has no write guard at all; the backup is your safety net.
 - **Large files cost real turns.** Results are windowed, so a 3,000-line file takes many
-  reads to work through. Narrow first with `grep` or `extract_symbols`, then read only
-  the region you need.
-- **Batches are not transactional.** Commands in an array run in order, and a failure
-  part-way through leaves the earlier edits applied. Use `validate_batch` first for
-  anything that must land together, and check each `[COMMAND n/N]` status.
-- **`undo` is one step deep, per file.** It restores that file's most recent backup.
-  Calling it twice does not walk back two edits. For real history, use git.
-- **Shell actions run with your full user permissions**, in the workspace directory.
-  `bash`, `powershell`, and `run` are ordinary subprocesses — they are not sandboxed. Use
-  `--no-shell` if you do not want the model executing anything.
-- **`web_search` scrapes a search engine's HTML.** It has no API key and no stability
-  guarantee; it will break when the page markup changes. Treat it as a convenience.
-- **Ignored files are skipped in search, not protected.** `.gitignore` now keeps build
-  output and secret files out of `search`, `grep`, and `glob`, but a file named directly
-  is still read. Do not rely on this as a security boundary.
+  reads. Narrow first with `grep` or `extract_symbols`.
+- **Batches are not transactional.** A failure part-way through leaves the earlier edits
+  applied. Use `validate_batch` first for anything that must land together.
+- **`undo` is one step deep, per file.** For real history, use git.
+- **Shell actions run with your full user permissions**, in the workspace directory —
+  they are not sandboxed. Use `--no-shell` if you do not want the model executing
+  anything.
+- **`web_search` scrapes a search engine's HTML.** No stability guarantee; treat it as a
+  convenience.
+- **Ignored files are skipped in search, not protected.** A file named directly is still
+  read; do not rely on this as a security boundary.
 
 ### Where not to use it
 
@@ -212,8 +224,9 @@ spend more of your own attention on copying than on reading the code.
   sites. Nothing rolls back, and you will be reconciling a half-applied change by hand.
 - **Binary, generated, or vendored files.** Non-UTF-8 files are rejected outright, and
   files over 4 MB are skipped by search.
-- **As an unattended agent.** There is no autonomous loop by design. If you want
-  something that runs on its own, this is the wrong tool.
+- **As an unattended agent.** There is no headless autonomous loop by design; even the
+  browser automation runs only while you are watching and stops at the first surprise.
+  If you want something that runs on its own, this is the wrong tool.
 - **On a repository with uncommitted work you cannot afford to lose.** Commit or stash
   first. TULES backs up every file it touches under `.tules_backups/`, but git is the
   real safety net.
@@ -222,8 +235,8 @@ spend more of your own attention on copying than on reading the code.
 
 TULES is a careful pair of hands for a model that cannot reach your filesystem. It is
 good at making a specific change to a specific file and proving the change worked. It is
-slow, manual, and deliberately un-autonomous. If those are acceptable, the guards and the
-backups make it a safe way to let a free chatbot do real work on real code.
+deliberately un-autonomous. If those are acceptable, the guards and the backups make it a
+safe way to let a free chatbot do real work on real code.
 
 ## Basic workflow
 
@@ -233,6 +246,9 @@ backups make it a safe way to let a free chatbot do real work on real code.
 4. TULES executes the JSON and writes a structured result to the clipboard.
 5. Paste that result back into the model.
 6. Continue until the model has inspected, changed, and verified the project.
+
+With `tules . --auto`, steps 2–6 happen automatically after you press Ctrl+F12
+in the chat tab — same protocol, same clipboard, no hand-carrying.
 
 ## Command protocol
 
@@ -244,19 +260,9 @@ edit:
 endedit
 ```
 
-A JSON array runs a sequential batch:
-
-```text
-edit:
-[
-  {"action":"glob","pattern":"**/*.py"},
-  {"action":"grep","pattern":"TODO","type":"py","output_mode":"content"}
-]
-endedit
-```
-
-TULES tolerates Markdown fences, trailing commas, and some common JSON formatting
-mistakes, but valid JSON is recommended.
+A JSON array between the markers runs a sequential batch of commands. TULES tolerates
+Markdown fences, trailing commas, and some common JSON formatting mistakes, but valid
+JSON is recommended.
 
 ## Result format
 
@@ -279,7 +285,7 @@ command; batches are sequential and are not transactional.
 
 `replace` is the canonical string and block replacement action. It takes the path as
 `file` or `file_path`, the existing text as `old_string`/`old_str`/`search`, and the new
-text as `new_string`/`new_str`/`replace_with`.
+text as `new_string`/`new_str`/`replace_with`:
 
 ```text
 edit:
@@ -294,11 +300,7 @@ or fuzzy match. It never silently picks among duplicates — on an ambiguous mat
 `context_before`/`context_after`, pass `match_id`, or set `replace_all: true`.
 `confidence_threshold` moves the fuzzy floor and `reason` labels the edit. An empty
 search creates a missing file or fills an empty one, but cannot overwrite a non-empty
-file.
-
-Older names (`edit`, `str_replace`, `surgical_replace`, `context_replace`,
-`search_and_replace_all`, `smart_replace`, `confirm_smart_replace`) still route here;
-new integrations should use `replace`.
+file. Older alias names still route here; new integrations should use `replace`.
 
 ## Available actions
 
@@ -362,36 +364,25 @@ For exact schemas, return fields, failure modes, and examples for every action, 
 
 ## Shell execution
 
-Bash example:
-
 ```text
 edit:
 {"action":"bash","command":"pytest -q","timeout":180,"description":"Run tests"}
 endedit
 ```
 
-PowerShell example:
-
-```text
-edit:
-{"action":"powershell","command":"Get-ChildItem -Recurse","timeout":60}
-endedit
-```
-
-Both return `stdout`, `stderr`, `exit_code`, shell metadata, and truncation status. Each
-output stream retains its last 30,000 characters. Timeouts must be between 1–600 seconds. Background execution is intentionally not
-supported in clipboard mode. If PowerShell is not installed, its action returns a clear
-failure rather than interpreting the command in another shell.
-
+The `powershell` action works the same way. Both return `stdout`, `stderr`, `exit_code`,
+shell metadata, and truncation status. Each output stream retains its last 30,000
+characters. Timeouts must be between 1–600 seconds. Background execution is
+intentionally not supported in clipboard mode. If PowerShell is not installed, its
+action returns a clear failure rather than interpreting the command in another shell.
 Use `--no-shell` when command execution should be unavailable.
 
 ## Web tools
 
 `web_search` queries Google without an API key. `web_fetch` retrieves a page as text,
-HTML, JSON, links, or filtered elements (`mode`, plus `tag`/`id`/`class`), and pages
-long results with `start_line`/`end_line` or `start_char`/`end_char`. `download_url`
-saves a file into the workspace, refusing to clobber an existing one unless
-`overwrite: true`.
+HTML, JSON, links, or filtered elements, and pages long results.
+`download_url` saves a file into the workspace, refusing to clobber an existing one
+unless `overwrite: true`:
 
 ```text
 edit:
@@ -412,9 +403,10 @@ absolute outside paths, or symlinks is rejected.
 
 **Backups.** Files are copied under `.tules_backups/` before mutation, with mirrored
 directories and timestamped names; rapid edits in the same second get unique backups
-rather than overwriting history. The newest ten per file are kept. Writes are atomic
-same-directory replacements that preserve permissions, so an interrupted write cannot
-leave a partial file. `undo` restores that file's latest backup — one step, not a stack.
+rather than overwriting history, and the newest copy always survives pruning. The newest
+ten per file are kept. Writes are atomic same-directory replacements that preserve
+permissions, so an interrupted write cannot leave a partial file. `undo` restores that
+file's latest backup — one step, not a stack.
 
 **Write guards**, applied before a create, overwrite, replacement, insertion, deletion,
 or line replacement, with the original left untouched on refusal:
@@ -460,7 +452,13 @@ tules/
   formatting.py     result rendering and the context budget
   monitor.py        clipboard loop
   cli.py            command-line interface
+  browser/          the optional Ctrl+F12 automation: cdp.py (DevTools
+                    client), page.py (probes, submit, completion detection),
+                    selectors.py (element recognition), profiles.py (learned
+                    per-site locations), teach.py (user-teaching flows),
+                    loop.py (the session state machine), hotkey.py (trigger)
 tests/              unit and integration tests
+smoke/              real-browser end-to-end run against a simulated AI site
 AI_TOOL_GUIDE.md    complete model-facing operating manual
 ```
 
@@ -473,11 +471,14 @@ reverse-engineering the whole project.
 ```sh
 pytest -q
 ruff check tules tests
+python smoke/run_smoke.py   # real-browser run; skips if no browser is found
 ```
 
 The suite covers every action end to end, replacement edge cases, path confinement, the
-write guards, the context budget, `.gitignore` handling, and shell behavior. A few tests
-depend on POSIX permissions or Bash and are expected to fail on Windows.
+write guards, the context budget, `.gitignore` handling, shell behavior, and the browser
+automation loop (completion detection, element learning, teaching, resume paths) against
+a simulated chat page. `smoke/run_smoke.py` repeats the full loop in a real browser. A
+few tests depend on POSIX permissions or Bash and are expected to fail on Windows.
 
 ## Contributing
 

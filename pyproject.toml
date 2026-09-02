@@ -11,7 +11,8 @@ requires-python = ">=3.9"
 dependencies = ["pyperclip>=1.8"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+browser = ["websocket-client>=1.6", "pynput>=1.7"]
+dev = ["pytest>=7", "websocket-client>=1.6", "websockets>=10", "ruff>=0.4"]
 
 [project.scripts]
 tules = "tules.cli:main"
@@ -28,6 +29,11 @@ line-length = 100
 [tool.ruff.lint]
 select = ["F", "E", "W", "B", "SIM", "C4", "RUF"]
 ignore = ["W191", "E101"]
+
+[tool.ruff.lint.per-file-ignores]
+# the page scripts are embedded JavaScript; long JS lines are fine there
+"tules/browser/js.py" = ["E501"]
+"tests/test_browser_js.py" = ["E501"]
 
 [tool.ruff.format]
 indent-style = "tab"
