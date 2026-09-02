@@ -266,7 +266,7 @@ USAGE: Dict[str, Usage] = {
 		required=("url",),
 		optional=("mode", "max_bytes", "start_line", "end_line", "tag", "id", "class"),
 		example='{"action":"web_fetch","url":"https://example.com","mode":"text"}',
-		note="mode: text (default), html, links, or elements",
+		note="mode: text (default), html, links, elements, or json",
 	),
 	"web_search": Usage(
 		required=("query",),

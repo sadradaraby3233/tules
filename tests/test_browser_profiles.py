@@ -62,3 +62,34 @@ def test_valid_selector_rejects_garbage():
 	assert not valid_selector("")
 	assert not valid_selector("x" * 501)
 	assert not valid_selector("has <<<< weird")
+
+
+def test_every_known_site_builds_a_usable_profile():
+	"""KNOWN_SITES feeds SiteProfile(**entry): a typo there is a crash at attach time."""
+	from tules.browser.profiles import valid_selector
+	from tules.browser.teach import KNOWN_SITES, known_site_defaults
+
+	assert KNOWN_SITES, "the built-in hints must not be empty"
+	for host in KNOWN_SITES:
+		profile = known_site_defaults(host)
+		assert profile.host == host
+		assert valid_selector(profile.input_selector), f"{host} has no usable input selector"
+		for name in ("copy_selector", "send_selector", "response_selector"):
+			value = getattr(profile, name)
+			assert not value or valid_selector(value), f"{host}.{name} is not a valid selector"
+
+
+def test_known_site_hints_are_keyed_by_their_own_normalized_host():
+	"""A key like "www.Foo.com" would never be found by the normalized lookup."""
+	from tules.browser.teach import KNOWN_SITES
+
+	for host in KNOWN_SITES:
+		assert normalize_host(host) == host
+
+
+def test_an_unknown_host_gets_an_empty_profile_instead_of_an_error():
+	from tules.browser.teach import known_site_defaults
+
+	profile = known_site_defaults("https://brand.new.example/chat")
+	assert profile.input_selector == ""
+	assert profile.learned == 0
