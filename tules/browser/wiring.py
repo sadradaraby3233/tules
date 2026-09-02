@@ -21,7 +21,7 @@ from .profiles import ProfileStore
 
 def connect_with_chooser(host: str, port: int):
 	"""Attach to the AI chat tab, asking on the terminal when several are open."""
-	from .cdp import BrowserError, connect as cdp_connect
+	from .cdp import BrowserError, BrowserUnavailable, connect as cdp_connect, debug_help
 
 	def chooser(pages):
 		print("Several tabs are open. Which one is the AI chat?")
@@ -33,7 +33,10 @@ def connect_with_chooser(host: str, port: int):
 		except (ValueError, IndexError) as exc:
 			raise BrowserError("no tab chosen") from exc
 
-	return cdp_connect(host=host, port=port, chooser=chooser)
+	try:
+		return cdp_connect(host=host, port=port, chooser=chooser)
+	except BrowserUnavailable as exc:
+		raise BrowserUnavailable(f"{exc.message}\n{debug_help(host, port)}", **exc.details) from exc
 
 
 def build_auto_loop(

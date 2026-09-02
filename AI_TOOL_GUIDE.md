@@ -380,6 +380,10 @@ endedit
 **Success details:** `content`, `total_lines`. Each line is formatted like
 ` 123 | source text`.
 
+A file that ends with a newline has one empty final line, and `total_lines` counts it.
+That empty line is a real, addressable position: `replace_by_line` can target it to
+append at the end of the file.
+
 **Use when:** preparing `replace_by_line`, discussing exact locations, or copying a
 precise block for strict replacement.
 
@@ -1064,8 +1068,16 @@ endedit
 
 **Details:** `checks`, each with index, action, validity, and reason.
 
-Important: validation has deep checks for native edit/create/delete/undo actions. Other
-recognized actions may return `No pre-flight check for this action`; that confirms only
+Pre-flight for a replacement asks exactly what the universal engine asks: one exact
+match is valid; several are invalid unless the command already carries
+`context_before`, `context_after`, `match_id`, or `replace_all`; and no exact match is
+valid only when the fuzzy locator still finds the block confidently, in which case the
+reason names the lines it would edit. Any replace spelling (`replace`, `str_replace`,
+`smart_replace`, and the other aliases) is checked the same way, because they all run
+the same engine.
+
+Important: validation has deep checks for the replace, create, delete, and undo actions.
+Other recognized actions return `No pre-flight check for this action`; that confirms only
 that the action name is recognized, not that execution is guaranteed.
 
 ## 16. Memory and introspection commands

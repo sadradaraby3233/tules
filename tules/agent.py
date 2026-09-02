@@ -1,5 +1,8 @@
 """The agent: one workspace, one command registry, one result per command."""
 
+import logging
+import os
+import traceback
 from typing import Any, Dict, List
 
 from . import commands  # noqa: F401
@@ -11,6 +14,9 @@ from .models import Result
 from .registry import describe, lookup
 from .search import Searcher
 from .workspace import Workspace
+
+LOGGER = logging.getLogger("tules")
+DEBUG_ENV = "TULES_DEBUG"
 
 REVIEWED_ISSUES = 3
 SHELL_TIMEOUT = 30
@@ -31,7 +37,7 @@ class Agent:
 		self.editor = Editor(self.workspace)
 		self.searcher = Searcher(self.workspace)
 		self.analyzer = CodeAnalyzer()
-		self.reviewer = Reviewer(self.workspace)
+		self.reviewer = Reviewer(self.workspace, self.analyzer)
 		self.allow_shell = allow_shell
 		self.shell_timeout = shell_timeout
 		self.auto_review = auto_review
@@ -55,7 +61,12 @@ class Agent:
 		except TulesError as exc:
 			return Result.fail(exc.message, **exc.details)
 		except Exception as exc:
-			return Result.fail(f"{type(exc).__name__}: {exc}")
+			# A bug inside one command must not end the session, but it must
+			# still be diagnosable: the traceback goes to the "tules" logger,
+			# and to the reply itself when TULES_DEBUG is set.
+			LOGGER.exception("unhandled error while running action %r", action)
+			details = {"traceback": traceback.format_exc()} if os.environ.get(DEBUG_ENV) else {}
+			return Result.fail(f"{type(exc).__name__}: {exc}", **details)
 		if result.success and command.mutates and self.auto_review:
 			self._append_review(result, payload)
 		return result

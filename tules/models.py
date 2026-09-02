@@ -3,17 +3,19 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+SUMMARY_WIDTH = 100
+
 
 @dataclass
 class SearchResult:
+	"""One matching line: where it is, what it says, and how it was found."""
+
 	file: str
 	line: int
 	text: str
-	context_before: str = ""
-	context_after: str = ""
 	kind: str = "exact"
 
-	def summarize(self, width: int = 100) -> Dict[str, Any]:
+	def summarize(self, width: int = SUMMARY_WIDTH) -> Dict[str, Any]:
 		return {"file": self.file, "line": self.line, "content": self.text[:width]}
 
 
@@ -32,10 +34,6 @@ class Result:
 	@classmethod
 	def fail(cls, message: str, errors: Optional[List[str]] = None, **details: Any) -> "Result":
 		return cls(False, message, details, errors=list(errors or []))
-
-	def annotate(self, **details: Any) -> "Result":
-		self.details.update(details)
-		return self
 
 	def warn(self, message: str) -> "Result":
 		self.warnings.append(message)

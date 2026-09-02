@@ -103,7 +103,51 @@ def test_validate_batch_checks_every_command(agent):
 	assert not result.success
 	assert result.details["checks"][0]["valid"] is False
 	assert "NOT_UNIQUE" in result.details["checks"][0]["reason"]
-	assert result.details["checks"][1]["reason"] == "Search string not found"
+	assert result.details["checks"][1]["reason"].startswith("Search string not found")
+
+
+def test_validate_batch_accepts_an_ambiguous_replace_that_says_how_to_resolve_it(agent):
+	result = agent.run(
+		{
+			"action": "validate_batch",
+			"commands": [
+				{
+					"action": "replace",
+					"file": "sample.py",
+					"old_string": "greet",
+					"new_string": "hello",
+					"replace_all": True,
+				},
+				{
+					"action": "replace",
+					"file": "sample.py",
+					"old_string": 'return f"hello {name}"',
+					"new_string": "return name",
+				},
+			],
+		}
+	)
+	assert result.success
+	assert [item["valid"] for item in result.details["checks"]] == [True, True]
+
+
+def test_validate_batch_reports_a_fuzzy_replace_as_landable(agent):
+	result = agent.run(
+		{
+			"action": "validate_batch",
+			"commands": [
+				{
+					"action": "replace",
+					"file": "sample.py",
+					"old_string": "def  greet( name ):",
+					"new_string": "def greet(name):",
+				}
+			],
+		}
+	)
+	check = result.details["checks"][0]
+	assert check["valid"] is True
+	assert "Fuzzy match" in check["reason"]
 
 
 def test_run_is_refused_when_shell_is_disabled(agent):
@@ -216,3 +260,35 @@ def test_monitor_skips_a_reply_pasted_back_as_input(agent):
 	monitor = ClipboardMonitor(agent, clipboard=clipboard, notify=lambda: None)
 	assert monitor.poll() is None
 	assert clipboard.writes == []
+
+
+def _exploding(monkeypatch):
+	"""Swap one registered action for a handler that raises."""
+	from tules.registry import REGISTRY, Command
+
+	def explode(agent, payload):
+		raise RuntimeError("boom")
+
+	monkeypatch.setitem(
+		REGISTRY, "list_actions", Command("list_actions", "explodes", explode, False)
+	)
+
+
+def test_an_unexpected_command_failure_is_logged_and_reported(agent, monkeypatch, caplog):
+	"""A crash inside a command becomes a failed Result, never a raised exception."""
+	_exploding(monkeypatch)
+	monkeypatch.delenv("TULES_DEBUG", raising=False)
+	with caplog.at_level("ERROR", logger="tules"):
+		result = agent.run({"action": "list_actions"})
+	assert not result.success
+	assert "RuntimeError: boom" in result.message
+	assert "traceback" not in result.details, "tracebacks stay out of the model's reply"
+	assert "unhandled error" in caplog.text and "boom" in caplog.text
+
+
+def test_debug_mode_returns_the_traceback_with_the_failure(agent, monkeypatch):
+	_exploding(monkeypatch)
+	monkeypatch.setenv("TULES_DEBUG", "1")
+	result = agent.run({"action": "list_actions"})
+	assert not result.success
+	assert "RuntimeError: boom" in result.details["traceback"]

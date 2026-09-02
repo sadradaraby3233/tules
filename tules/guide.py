@@ -159,7 +159,7 @@ USAGE: Dict[str, Usage] = {
 		note="inserts after line_start; 0 puts the content at the top",
 	),
 	"list_actions": Usage(
-		optional=("name", "limit"),
+		optional=("name",),
 		example='{"action":"list_actions","name":"replace"}',
 		note="also reachable as 'help'; pass 'name' for one action's full usage",
 	),
@@ -266,7 +266,7 @@ USAGE: Dict[str, Usage] = {
 		required=("url",),
 		optional=("mode", "max_bytes", "start_line", "end_line", "tag", "id", "class"),
 		example='{"action":"web_fetch","url":"https://example.com","mode":"text"}',
-		note="mode: text (default), html, links, or elements",
+		note="mode: text (default), html, links, elements, or json",
 	),
 	"web_search": Usage(
 		required=("query",),

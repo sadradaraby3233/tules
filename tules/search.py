@@ -2,14 +2,12 @@
 
 import re
 from difflib import SequenceMatcher
-from pathlib import Path
-from typing import Callable, List, Sequence
+from typing import Callable, List
 
 from .errors import TulesError, WorkspaceError
 from .models import SearchResult
 from .workspace import Workspace
 
-CONTEXT_LINES = 2
 DEFAULT_LIMIT = 200
 
 LineMatcher = Callable[[str], bool]
@@ -76,22 +74,11 @@ class Searcher:
 				lines = self.workspace.load_path(path, strict=False).lines
 			except WorkspaceError:
 				continue
+			relpath = self.workspace.relativize(path)
 			for number, line in enumerate(lines, 1):
 				if not matches(line):
 					continue
-				results.append(self._locate(path, number, lines, kind))
+				results.append(SearchResult(relpath, number, line.rstrip(), kind))
 				if len(results) >= limit:
 					return results
 		return results
-
-	def _locate(self, path: Path, number: int, lines: Sequence[str], kind: str) -> SearchResult:
-		start = max(0, number - 1 - CONTEXT_LINES)
-		stop = min(len(lines), number + CONTEXT_LINES)
-		return SearchResult(
-			file=self.workspace.relativize(path),
-			line=number,
-			text=lines[number - 1].rstrip(),
-			context_before="\n".join(lines[start : number - 1]),
-			context_after="\n".join(lines[number:stop]),
-			kind=kind,
-		)

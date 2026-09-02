@@ -40,8 +40,14 @@ from tules.browser.page import BrowserPage  # noqa: E402
 from tules.browser.profiles import ProfileStore  # noqa: E402
 
 BROWSER_NAMES = [
-	"chromium", "chromium-browser", "google-chrome-stable", "google-chrome",
-	"chrome", "microsoft-edge", "msedge", "brave-browser",
+	"chromium",
+	"chromium-browser",
+	"google-chrome-stable",
+	"google-chrome",
+	"chrome",
+	"microsoft-edge",
+	"msedge",
+	"brave-browser",
 ]
 
 PLAYWRIGHT_GLOBS = [
@@ -109,7 +115,8 @@ def wait_for_debug_port(port: int, timeout: float = 25.0) -> bool:
 	deadline = time.time() + timeout
 	while time.time() < deadline:
 		try:
-			with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1.0) as response:
+			url = f"http://127.0.0.1:{port}/json/version"
+			with urllib.request.urlopen(url, timeout=1.0) as response:
 				json.loads(response.read().decode("utf-8"))
 				return True
 		except Exception:
@@ -119,10 +126,15 @@ def wait_for_debug_port(port: int, timeout: float = 25.0) -> bool:
 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-	parser.add_argument("--browser", default=os.environ.get("TULES_SMOKE_CHROME", ""),
-		help="path to a Chromium-family browser (otherwise a well-known one is sought)")
+	parser.add_argument(
+		"--browser",
+		default=os.environ.get("TULES_SMOKE_CHROME", ""),
+		help="path to a Chromium-family browser (otherwise a well-known one is sought)",
+	)
 	parser.add_argument("--port", type=int, default=9333, help="remote debugging port")
-	parser.add_argument("--site-port", type=int, default=0, help="port for the fake site (0: ephemeral)")
+	parser.add_argument(
+		"--site-port", type=int, default=0, help="port for the fake site (0: ephemeral)"
+	)
 	parser.add_argument("--keep", action="store_true", help="leave the browser and site running")
 	parser.add_argument("--headed", action="store_true", help="show the browser window")
 	options = parser.parse_args()
@@ -151,20 +163,27 @@ def main() -> int:
 	print(f"[smoke] fake site: {url}")
 
 	profile_dir = tempfile.mkdtemp(prefix="tules-smoke-profile-")
-	command = [browser, f"--remote-debugging-port={options.port}",
-		f"--user-data-dir={profile_dir}", "--no-first-run",
-		"--no-default-browser-check", "--disable-gpu"]
+	command = [
+		browser,
+		f"--remote-debugging-port={options.port}",
+		f"--user-data-dir={profile_dir}",
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-gpu",
+	]
 	if not options.headed:
 		command.append("--headless=new")
 	command.append(url)
-	browser_process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+	browser_process = subprocess.Popen(
+		command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+	)
 
 	try:
 		if not wait_for_debug_port(options.port):
 			print(f"FAIL: the browser did not open port {options.port}.")
 			return 1
 
-		target, conn = connect(port=options.port, prefer_host="127.0.0.1")
+		_, conn = connect(port=options.port, prefer_host="127.0.0.1")
 		page = BrowserPage(conn)
 
 		grant = (
@@ -175,7 +194,9 @@ def main() -> int:
 			state = conn.evaluate(grant)
 			print(f"[smoke] page clipboard permission: {state}")
 		except Exception as exc:
-			print(f"[smoke] clipboard permission probe unavailable ({exc}); using the mirror fallback")
+			print(
+				f"[smoke] clipboard permission probe unavailable ({exc}); using the mirror fallback"
+			)
 
 		store = ProfileStore(Path(tempfile.mkdtemp(prefix="tules-smoke-cfg-")) / "sites.json")
 		loop = AutoLoop(
@@ -191,15 +212,19 @@ def main() -> int:
 
 		started = time.time()
 		loop.run_session()
-		print(f"[smoke] session finished in {time.time() - started:.1f} s,"
-			f" cycles: {loop.cycles}, mode: {loop.mode}")
+		print(
+			f"[smoke] session finished in {time.time() - started:.1f} s,"
+			f" cycles: {loop.cycles}, mode: {loop.mode}"
+		)
 
 		content = hello.read_text(encoding="utf-8")
 		if "TULES WAS HERE" in content and loop.cycles == 2:
 			print("[smoke] PASS: two automated cycles ran and the edit landed on disk.")
 			if options.keep:
-				print(f"[smoke] keeping browser (debug port {options.port}) and site ({url});"
-					f" workspace: {workspace}. Ctrl+C to exit.")
+				print(
+					f"[smoke] keeping browser (debug port {options.port}) and site ({url});"
+					f" workspace: {workspace}. Ctrl+C to exit."
+				)
 				browser_process.wait()
 			return 0
 		print(f"FAIL: hello.txt is {content!r}, cycles: {loop.cycles}")

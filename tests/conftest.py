@@ -5,8 +5,18 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tules import formatting
 from tules.agent import Agent
 from tules.workspace import Workspace
+
+
+@pytest.fixture(autouse=True)
+def _isolated_output_budget():
+	"""The display budget is process-wide; never let one test resize another."""
+	original = formatting.budget()
+	yield
+	formatting.set_budget(original)
+
 
 SAMPLE = """import os
 

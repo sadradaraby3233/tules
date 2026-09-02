@@ -12,7 +12,7 @@ import re
 import time
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 SCHEMA_VERSION = 1
 ENV_OVERRIDE = "TULES_SITES_FILE"
@@ -40,7 +40,6 @@ class SiteProfile:
 
 	host: str
 	input_selector: str = ""
-	input_kind: str = ""
 	copy_selector: str = ""
 	send_selector: str = ""
 	response_selector: str = ""
@@ -102,10 +101,14 @@ class ProfileStore:
 		try:
 			data = json.loads(raw)
 		except json.JSONDecodeError as exc:
-			stamp = time.strftime("%Y%m%d_%H%M%S")
-			with open(f"{self.path}.bad-{stamp}", "w", encoding="utf-8") as handle:
-				handle.write(raw)
 			self.warning = f"{self.path} was corrupt ({exc}); moved aside, starting fresh"
+			stamp = time.strftime("%Y%m%d_%H%M%S")
+			try:
+				Path(f"{self.path}.bad-{stamp}").write_text(raw, encoding="utf-8")
+			except OSError as write_exc:
+				self.warning = (
+					f"{self.path} was corrupt ({exc}) and unreadable copy failed: {write_exc}"
+				)
 			return {}
 		sites = data.get("sites") if isinstance(data, dict) else None
 		return sites if isinstance(sites, dict) else {}
@@ -117,9 +120,8 @@ class ProfileStore:
 		profile = SiteProfile.from_dict(data)
 		return profile if profile.learned else None
 
-	def save(self, profile: SiteProfile) -> Path:
-		sites = self._read_all()
-		sites[normalize_host(profile.host)] = profile.to_dict()
+	def _write_all(self, sites: Dict[str, Dict[str, object]]) -> Path:
+		"""Atomically replace the store, so a crash never truncates it."""
 		document = {"version": SCHEMA_VERSION, "sites": sites}
 		self.path.parent.mkdir(parents=True, exist_ok=True)
 		temporary = self.path.with_suffix(f".{os.getpid()}.tmp")
@@ -129,15 +131,24 @@ class ProfileStore:
 		os.replace(temporary, self.path)
 		return self.path
 
+	def save(self, profile: SiteProfile) -> Path:
+		sites = self._read_all()
+		sites[normalize_host(profile.host)] = profile.to_dict()
+		return self._write_all(sites)
+
 	def forget(self, host: str) -> bool:
 		sites = self._read_all()
 		key = normalize_host(host)
 		if key not in sites:
 			return False
 		del sites[key]
-		document = {"version": SCHEMA_VERSION, "sites": sites}
-		self.path.parent.mkdir(parents=True, exist_ok=True)
-		self.path.write_text(
-			json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-		)
+		self._write_all(sites)
 		return True
+
+
+def forget_site(host: str, sites_file: Optional[str] = None) -> Tuple[bool, str]:
+	"""Delete one site's learned locations; returns (removed, message to show)."""
+	store = ProfileStore(Path(sites_file) if sites_file else None)
+	if store.forget(host):
+		return True, f"Forgot {host}: its saved locations are gone from {store.path}."
+	return False, f"No saved locations for {host} in {store.path}."

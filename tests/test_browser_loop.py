@@ -356,3 +356,33 @@ def test_a_hotkey_press_made_during_a_session_is_dropped_not_queued(tmp_path):
 	h.loop.run_session()
 	assert h.loop.consume_trigger() is False
 	assert h.status().count("Fresh start") == 1
+
+
+def test_saved_generating_selector_is_offered_to_the_page_first(tmp_path):
+	"""A hand-tuned profile field must reach the page, not sit unused on disk."""
+	harness = Harness(tmp_path, [REPLY_DONE])
+	harness.store.save(
+		SiteProfile(
+			host=HOST,
+			input_selector="#prompt",
+			copy_selector="button.copy",
+			generating_selector=".busy-dot",
+		)
+	)
+	default_first = harness.page.generating_selectors[0]
+	assert default_first != ".busy-dot"
+	harness.loop._apply_saved_generating_selector(harness.page, HOST)
+	assert harness.page.generating_selectors[0] == ".busy-dot"
+	harness.loop._apply_saved_generating_selector(harness.page, HOST)
+	assert harness.page.generating_selectors.count(".busy-dot") == 1, "re-attach must not stack"
+
+
+def test_an_unknown_or_broken_generating_selector_leaves_the_defaults_alone(tmp_path):
+	harness = Harness(tmp_path, [REPLY_DONE])
+	defaults = list(harness.page.generating_selectors)
+	harness.store.save(
+		SiteProfile(host=HOST, input_selector="#prompt", copy_selector="button.copy")
+	)
+	harness.loop._apply_saved_generating_selector(harness.page, HOST)
+	harness.loop._apply_saved_generating_selector(harness.page, "never-seen.example")
+	assert harness.page.generating_selectors == defaults

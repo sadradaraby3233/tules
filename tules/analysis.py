@@ -158,10 +158,28 @@ for _suffixes, _patterns in (
 
 
 def parse_python(document: Document) -> ast.Module:
+	"""Parse a Python file, turning a SyntaxError into a reportable failure."""
 	try:
 		return ast.parse(document.text, filename=document.relpath)
 	except SyntaxError as exc:
 		raise TulesError(f"Cannot parse {document.relpath}: {exc.msg}", line=exc.lineno) from exc
+
+
+def try_parse_python(document: Document) -> Optional[ast.Module]:
+	"""Parse a Python file, or return None when it does not compile."""
+	try:
+		return ast.parse(document.text, filename=document.relpath)
+	except SyntaxError:
+		return None
+
+
+def long_lines(document: Document, limit: int, message: str) -> List[Dict[str, Any]]:
+	"""One 'line too long' issue per offending line."""
+	return [
+		{"severity": "info", "line": number, "message": message.format(length=len(line))}
+		for number, line in enumerate(document.lines, 1)
+		if len(line) > limit
+	]
 
 
 class CodeAnalyzer:
@@ -235,21 +253,14 @@ class CodeAnalyzer:
 class Reviewer:
 	"""Cheap static checks that catch what a language model usually breaks."""
 
-	def __init__(self, workspace: Workspace):
+	def __init__(self, workspace: Workspace, analyzer: Optional[CodeAnalyzer] = None):
 		self.workspace = workspace
+		self.analyzer = analyzer or CodeAnalyzer()
 
 	def review(self, relpath: str) -> List[Dict[str, Any]]:
 		document = self.workspace.load(relpath, strict=False)
 		if document.path.suffix != ".py":
-			return [
-				{
-					"severity": "info",
-					"line": number,
-					"message": f"Very long line ({len(line)} chars)",
-				}
-				for number, line in enumerate(document.lines, 1)
-				if len(line) > LONG_LINE * 1.5
-			]
+			return long_lines(document, int(LONG_LINE * 1.5), "Very long line ({length} chars)")
 		try:
 			tree = ast.parse(document.text, filename=document.relpath)
 		except SyntaxError as exc:
@@ -363,16 +374,8 @@ class Reviewer:
 		return issues
 
 	def _layout(self, document: Document) -> List[Dict[str, Any]]:
-		issues = []
+		issues = long_lines(document, LONG_LINE, f"Line over {LONG_LINE} chars ({{length}})")
 		for number, line in enumerate(document.lines, 1):
-			if len(line) > LONG_LINE:
-				issues.append(
-					{
-						"severity": "info",
-						"line": number,
-						"message": f"Line over {LONG_LINE} chars ({len(line)})",
-					}
-				)
 			indent = line[: len(line) - len(line.lstrip())]
 			if "\t" in indent and " " in indent:
 				issues.append(
@@ -431,15 +434,14 @@ class Reviewer:
 	) -> List[Tuple[str, int]]:
 		"""Named definitions in a file: (name, line). Python via ``ast``, others via regex."""
 		if document.path.suffix.lower() == ".py":
-			try:
-				tree = ast.parse(document.text)
-			except SyntaxError:
+			tree = try_parse_python(document)
+			if tree is None:
 				return []
 			nodes = tree.body if top_level_only else list(ast.walk(tree))
 			return [(node.name, node.lineno) for node in nodes if isinstance(node, DEFINITIONS)]
 		return [
 			(symbol["name"], symbol["line"])
-			for symbol in CodeAnalyzer().extract_symbols(document)
+			for symbol in self.analyzer.extract_symbols(document)
 			if symbol["kind"] in DEFINITION_KINDS
 		]
 

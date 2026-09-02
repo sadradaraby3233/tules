@@ -125,15 +125,11 @@ class AutoLoop:
 	# --- trigger ------------------------------------------------------------
 
 	def request_start(self) -> None:
-		"""Called by the hotkey watcher (any thread)."""
+		"""Ask for a session from any thread (the hotkey watcher, or a test)."""
 		self.trigger.request()
 
 	def consume_trigger(self) -> bool:
 		return self.trigger.consume()
-
-	@property
-	def resume_hint(self) -> str:
-		return RESUME_HINT
 
 	# --- session ------------------------------------------------------------
 
@@ -146,17 +142,17 @@ class AutoLoop:
 		except AutomationPaused as exc:
 			self.mode = exc.mode
 			self.reporter.error(exc.message)
-			self.reporter.status(self.resume_hint)
+			self.reporter.status(RESUME_HINT)
 			beep()
 		except BrowserError as exc:
 			# The mode is left as it is: nothing submitted keeps its paste-for-
 			# next-time plan, and a session past submitting resumes watching.
 			self.reporter.error(f"browser problem: {exc.message}")
-			self.reporter.status(self.resume_hint)
+			self.reporter.status(RESUME_HINT)
 			beep()
 		except Exception as exc:  # never let the automation crash the monitor
 			self.reporter.error(f"unexpected automation failure: {type(exc).__name__}: {exc}")
-			self.reporter.status(self.resume_hint)
+			self.reporter.status(RESUME_HINT)
 			beep()
 		finally:
 			self.active = False
@@ -169,6 +165,7 @@ class AutoLoop:
 		state = page.state()
 		self.reporter.status(f"Attached to {state.url or 'the browser tab'}")
 		host = state.host
+		self._apply_saved_generating_selector(page, host)
 
 		message = self._next_message()
 		while True:
@@ -353,6 +350,12 @@ class AutoLoop:
 			or element.editable
 			or (element.tag == "input" and element.kind in ("", "text", "search"))
 		)
+
+	def _apply_saved_generating_selector(self, page, host: str) -> None:
+		"""Let a saved profile name this site's "still writing" element first."""
+		saved = self._saved_selector(host, "generating_selector")
+		if saved and saved not in page.generating_selectors:
+			page.generating_selectors.insert(0, saved)
 
 	def _saved_selector(self, host: str, kind: str) -> str:
 		saved = self.store.load(host)

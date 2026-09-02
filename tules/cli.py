@@ -9,13 +9,12 @@ import argparse
 import sys
 from typing import List, Optional
 
-from .agent import Agent
+from .agent import SHELL_TIMEOUT, Agent
 from .clipboard import Clipboard
 from .guide import BOOTSTRAP
 from .errors import TulesError
 from .formatting import DEFAULT_BUDGET, set_budget
-from .monitor import POLL_SECONDS, ClipboardMonitor, run_payload
-from .protocol import find_block
+from .monitor import POLL_SECONDS, ClipboardMonitor, run_payload_file
 
 DESCRIPTION = "Clipboard driven code agent: reads edit: ... endedit blocks and applies them."
 EPILOG = "Run tules with no arguments for the interactive console; the flags are script shortcuts."
@@ -50,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser.add_argument(
 		"--no-auto-review", action="store_true", help="do not review a file after editing it"
 	)
-	parser.add_argument("--shell-timeout", type=int, default=30, metavar="SECONDS")
+	parser.add_argument("--shell-timeout", type=int, default=SHELL_TIMEOUT, metavar="SECONDS")
 	parser.add_argument(
 		"--budget",
 		type=int,
@@ -181,16 +180,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def _forget_site(host: str, sites_file: Optional[str]) -> int:
-	from pathlib import Path
+	from .browser.profiles import forget_site
 
-	from .browser.profiles import ProfileStore
-
-	store = ProfileStore(Path(sites_file) if sites_file else None)
-	if store.forget(host):
-		print(f"Forgot the saved element locations for {host} ({store.path}).")
-		return 0
-	print(f"No saved locations for {host} in {store.path}.")
-	return 1
+	removed, message = forget_site(host, sites_file)
+	print(message)
+	return 0 if removed else 1
 
 
 def _build_auto_loop(options: argparse.Namespace, agent: Agent):
@@ -222,12 +216,11 @@ def _emit_prompt(copy: bool = False) -> int:
 
 
 def _run_once(agent: Agent, source: str) -> int:
-	if source == "-":
-		text = sys.stdin.read()
-	else:
-		with open(source, encoding="utf-8") as handle:
-			text = handle.read()
-	print(run_payload(agent, find_block(text) or text, log=None))
+	try:
+		print(run_payload_file(agent, source))
+	except OSError as exc:
+		print(f"ERROR: could not read {source}: {exc}", file=sys.stderr)
+		return 2
 	return 0
 
 

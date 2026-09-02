@@ -1,6 +1,8 @@
 """Watches the clipboard for command blocks and writes the answer back."""
 
+import sys
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 from .agent import Agent
@@ -107,6 +109,12 @@ class ClipboardMonitor:
 
 	def handle(self, payload: str) -> str:
 		return run_payload(self.agent, payload, log=print)
+
+
+def run_payload_file(agent: Agent, source: str) -> str:
+	"""Run the payload held in a file, or on stdin when ``source`` is ``-``."""
+	body = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+	return run_payload(agent, find_block(body) or body)
 
 
 def run_payload(agent: Agent, payload: str, log: Optional[Callable[[str], None]] = None) -> str:
