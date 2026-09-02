@@ -372,6 +372,13 @@ intentionally not supported in clipboard mode. If PowerShell is not installed, i
 action returns a clear failure rather than interpreting the command in another shell.
 Use `--no-shell` when command execution should be unavailable.
 
+A command that overruns its timeout is killed as a whole process group, so anything it
+started in the background dies with it rather than lingering.
+
+Two environment variables are read: `TULES_SITES_FILE` (where learned website locations
+live) and `TULES_DEBUG` (add the traceback to an unexpected command error). Unexpected
+errors always reach the `tules` logger as well; attach a handler to collect them.
+
 ## Web tools
 
 `web_search` queries Google without an API key. `web_fetch` retrieves a page as text,

@@ -380,6 +380,10 @@ endedit
 **Success details:** `content`, `total_lines`. Each line is formatted like
 ` 123 | source text`.
 
+A file that ends with a newline has one empty final line, and `total_lines` counts it.
+That empty line is a real, addressable position: `replace_by_line` can target it to
+append at the end of the file.
+
 **Use when:** preparing `replace_by_line`, discussing exact locations, or copying a
 precise block for strict replacement.
 

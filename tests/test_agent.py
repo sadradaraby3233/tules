@@ -260,3 +260,35 @@ def test_monitor_skips_a_reply_pasted_back_as_input(agent):
 	monitor = ClipboardMonitor(agent, clipboard=clipboard, notify=lambda: None)
 	assert monitor.poll() is None
 	assert clipboard.writes == []
+
+
+def _exploding(monkeypatch):
+	"""Swap one registered action for a handler that raises."""
+	from tules.registry import REGISTRY, Command
+
+	def explode(agent, payload):
+		raise RuntimeError("boom")
+
+	monkeypatch.setitem(
+		REGISTRY, "list_actions", Command("list_actions", "explodes", explode, False)
+	)
+
+
+def test_an_unexpected_command_failure_is_logged_and_reported(agent, monkeypatch, caplog):
+	"""A crash inside a command becomes a failed Result, never a raised exception."""
+	_exploding(monkeypatch)
+	monkeypatch.delenv("TULES_DEBUG", raising=False)
+	with caplog.at_level("ERROR", logger="tules"):
+		result = agent.run({"action": "list_actions"})
+	assert not result.success
+	assert "RuntimeError: boom" in result.message
+	assert "traceback" not in result.details, "tracebacks stay out of the model's reply"
+	assert "unhandled error" in caplog.text and "boom" in caplog.text
+
+
+def test_debug_mode_returns_the_traceback_with_the_failure(agent, monkeypatch):
+	_exploding(monkeypatch)
+	monkeypatch.setenv("TULES_DEBUG", "1")
+	result = agent.run({"action": "list_actions"})
+	assert not result.success
+	assert "RuntimeError: boom" in result.details["traceback"]
