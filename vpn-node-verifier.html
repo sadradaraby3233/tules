@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
-<!-- built 2026-09-08 04:14 :: single-file, no external assets -->
+<!-- built 2026-09-08 05:18 :: single-file, no external assets -->
 <title>Working VPN configurations</title>
 <style>
   :root {
@@ -53,6 +53,8 @@
   li button { width: auto; min-height: 44px; padding: 10px 14px; font-size: .875rem; background: transparent;
     border: 1px solid var(--line); color: var(--fg); border-radius: 9px; flex: none; }
   li button.copied { border-color: var(--good); color: var(--good); }
+  .src { color: var(--dim); font-size: .75rem; }
+  @media (prefers-color-scheme: light) { .src { color: #57606a; } }
   .empty { padding: 16px; color: var(--dim); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
     overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
@@ -62,7 +64,7 @@
 <body>
 <main>
   <h1 id="title">Working VPN configurations</h1>
-  <p class="hint" id="go-hint">One button. It fetches the public v2ray feeds, tests every node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
+  <p class="hint" id="go-hint">One button. It reads seventeen public node sources — the Türkiye and Germany files first, then the sources that test what they publish, handshakes each node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
   <button id="btnGo" type="button" aria-describedby="go-desc">Get me configurations</button>
   <p id="go-desc" class="visually-hidden">Tests every published node using this device's internet connection, then lists only the ones that answer.</p>
   <p class="status" id="status" role="status" aria-live="polite" aria-atomic="true">Not run yet.</p>
@@ -70,7 +72,7 @@
   <p class="meter" id="meter" aria-hidden="true"></p>
 
   <h2 id="list-label" class="visually-hidden">Working configurations, sorted by ping</h2>
-  <p id="list-help" class="visually-hidden">Use the up and down arrow keys to move between configurations. Press Enter to copy the selected configuration. Each row states the ping in milliseconds, then the node name and address.</p>
+  <p id="list-help" class="visually-hidden">Use the up and down arrow keys to move between configurations. Press Enter to copy the selected configuration. Each row states the ping in milliseconds, then the country, the node name and address, and whether the traffic to it is encrypted.</p>
   <ul role="listbox" id="list" tabindex="0" aria-labelledby="list-label" aria-describedby="list-help" hidden></ul>
 </main>
 
@@ -96,15 +98,213 @@
 /* Every URL here is a GitHub-hosted *file*; fetchText() rewrites them to
  * CORS-enabled mirrors automatically (raw → jsDelivr → statically → API). */
 const FEEDS = [
-  { id: "au1rxx_us",  label: "Au1rxx · United States · hourly CI-verified",
+  /* Geo-tagged files come first: mergeFeeds() keeps the first-seen copy of a
+   * duplicated node, so those nodes arrive carrying a known country. */
+  { id: "soli_tr",   label: "SoliSpirit · Türkiye", geo: "TR",
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/T%C3%BCrkiye.txt" },
+  { id: "radikal_tr", label: "0xRadikal · Türkiye", geo: "TR", trust: "verified",
+    url: "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/Countries/Turkey.txt" },
+  { id: "soli_de",   label: "SoliSpirit · Germany", geo: "DE",
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/Germany.txt" },
+  { id: "radikal_de", label: "0xRadikal · Germany", geo: "DE", trust: "verified",
+    url: "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/Countries/Germany.txt" },
+  { id: "soli_nl",   label: "SoliSpirit · Netherlands", geo: "NL",
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/The_Netherlands.txt" },
+  { id: "soli_gb",   label: "SoliSpirit · United Kingdom", geo: "GB",
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/United_Kingdom.txt" },
+  { id: "soli_us",   label: "SoliSpirit · United States", geo: "US", maxBytes: 450000,
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/United_States.txt" },
+  { id: "soli_fr",   label: "SoliSpirit · France", geo: "FR",
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/France.txt" },
+  { id: "soli_ir",   label: "SoliSpirit · Iran (domestic, lowest ping)", geo: "IR",
+    url: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/Iran.txt" },
+
+  /* Sources that run their own CI against what they publish. */
+  { id: "radikal_top100", label: "0xRadikal · top 100 by measured delay (CI)", trust: "verified", maxBytes: 120000,
+    url: "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/top100.txt" },
+  { id: "radikal_fast", label: "0xRadikal · fast list (CI)", trust: "verified", maxBytes: 450000,
+    url: "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/fast/configs.txt" },
+  { id: "radikal_secure", label: "0xRadikal · TLS/Reality only (CI)", trust: "verified", maxBytes: 450000,
+    url: "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/secure/configs.txt" },
+  { id: "au1rxx_us",  label: "Au1rxx · United States · traffic-tested hourly", geo: "US", trust: "verified", maxBytes: 700000,
     url: "https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/country/US/v2ray-base64-0001.txt" },
-  { id: "au1rxx_all", label: "Au1rxx · worldwide · hourly CI-verified",
+  { id: "au1rxx_all", label: "Au1rxx · worldwide · traffic-tested hourly", trust: "verified", maxBytes: 700000,
     url: "https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/v2ray-base64.txt" },
-  { id: "awesomevpn", label: "awesome-vpn · daily",
+
+  /* Big aggregators: broadest net, refreshed every 15 minutes. */
+  { id: "4n0nymou3", label: "multi-proxy-config-fetcher", maxBytes: 600000,
+    url: "https://raw.githubusercontent.com/4n0nymou3/multi-proxy-config-fetcher/main/configs/proxy_configs.txt" },
+  { id: "aliilapro", label: "ALIILAPRO · v2rayNG-Config", maxBytes: 700000,
+    url: "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/server.txt" },
+  { id: "matin",     label: "MatinGhanbari · every 15 min", maxBytes: 700000,
+    url: "https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/all_sub.txt" },
+  { id: "awesomevpn", label: "awesome-vpn · daily", maxBytes: 200000,
     url: "https://raw.githubusercontent.com/awesome-vpn/awesome-vpn/master/all" },
-  { id: "barabama",   label: "Barabama/FreeNodes · crawler (default branch auto)",
-    url: "https://raw.githubusercontent.com/Barabama/FreeNodes/master/nodes/nodev2ray.txt" },
+  { id: "barabama",   label: "Barabama · Cloudflare-worker nodes", maxBytes: 120000,
+    url: "https://raw.githubusercontent.com/Barabama/FreeNodes/feat%2Fai-crawler-v2/nodes/cfmem.txt" },
 ];
+
+/* ----------------------------------------------------------------- geo ----- */
+/* Where a node sits decides whether it feels fast from Iran, so the location is
+ * worked out from three signals: which feed the file came from, the remark text
+ * (flags / country words), and the hosting provider's own datacentre codes in
+ * the hostname. Unknown is never guessed at. */
+const GEO_TIERS = {
+  /* ~20-60 ms from Iran */
+  near:     ["TR", "AM", "AZ", "GE", "IR", "IQ", "RU", "UA", "MD", "RO", "BG", "GR", "CY", "KZ"],
+  /* ~50-90 ms, well peered into Iran */
+  gulf:     ["AE", "QA", "OM", "BH", "KW"],
+  /* ~100-140 ms, the classic fast European hosts */
+  west:     ["DE", "NL", "FI", "SE", "NO", "DK", "IS", "GB", "FR", "CH", "AT", "BE", "CZ", "PL",
+             "IE", "LT", "LV", "EE", "HU", "ES", "IT", "PT", "LU", "SK", "SI", "HR", "RS", "BA",
+             "MK", "AL", "ME", "MT"],
+  /* reachable, but an ocean away */
+  overseas: ["US", "CA", "MX", "BR", "AR", "CL", "CO", "PE", "UY", "PY", "BO"],
+  /* far east and south: usually 200 ms+ from Iran, and often oversubscribed */
+  far:      ["CN", "HK", "TW", "JP", "KR", "SG", "MY", "TH", "VN", "IN", "PK", "ID", "PH", "AU",
+             "NZ", "ZA", "EG", "NG", "KE", "MA", "IL", "SA", "JO", "LB", "UZ", "TM", "TJ", "KG"]
+};
+const GEO_SCORE = { near: 45, gulf: 35, west: 25, overseas: 8, far: -15 };
+const GEO_NAMES = {
+  TR: "Turkey", DE: "Germany", NL: "the Netherlands", GB: "the United Kingdom", FR: "France",
+  FI: "Finland", SE: "Sweden", NO: "Norway", DK: "Denmark", IS: "Iceland", CH: "Switzerland",
+  AT: "Austria", BE: "Belgium", CZ: "Czechia", PL: "Poland", IE: "Ireland", LT: "Lithuania",
+  LV: "Latvia", EE: "Estonia", HU: "Hungary", RO: "Romania", BG: "Bulgaria", GR: "Greece",
+  CY: "Cyprus", MD: "Moldova", UA: "Ukraine", RU: "Russia", KZ: "Kazakhstan", AM: "Armenia",
+  AZ: "Azerbaijan", GE: "Georgia", IR: "Iran", IQ: "Iraq", AE: "the United Arab Emirates",
+  QA: "Qatar", OM: "Oman", BH: "Bahrain", KW: "Kuwait", US: "the United States", CA: "Canada",
+  ES: "Spain", IT: "Italy", PT: "Portugal", LU: "Luxembourg", AL: "Albania", RS: "Serbia",
+  HR: "Croatia", SI: "Slovenia", SK: "Slovakia", BA: "Bosnia", MK: "North Macedonia",
+  ME: "Montenegro", MT: "Malta", AR: "Argentina", BR: "Brazil", MX: "Mexico", CL: "Chile",
+  ZA: "South Africa", EG: "Egypt", NG: "Nigeria", KE: "Kenya", MA: "Morocco",
+  JP: "Japan", KR: "South Korea", SG: "Singapore", MY: "Malaysia", TH: "Thailand",
+  VN: "Vietnam", IN: "India", PK: "Pakistan", ID: "Indonesia", PH: "the Philippines",
+  TW: "Taiwan", HK: "Hong Kong", CN: "China", AU: "Australia", NZ: "New Zealand",
+  BD: "Bangladesh", NP: "Nepal", LK: "Sri Lanka", UZ: "Uzbekistan", TM: "Turkmenistan",
+  BY: "Belarus"
+};
+const GEO_ALIASES = {
+  turkey: "TR", turkiye: "TR", türkiye: "TR", turkie: "TR", istanbul: "TR", ankara: "TR",
+  germany: "DE", deutsch: "DE", deutschland: "DE", berlin: "DE", frankfurt: "DE",
+  nbg: "DE", fsn: "DE", hetznerde: "DE",
+  netherlands: "NL", holland: "NL", amsterdam: "NL", ams: "NL",
+  iran: "IR", tehran: "IR",
+  finland: "FI", helsinki: "FI", sweden: "SE", stockholm: "SE", norway: "NO", oslo: "NO",
+  denmark: "DK", copenhagen: "DK", iceland: "IS",
+  "united kingdom": "GB", england: "GB", london: "GB", uk: "GB", britain: "GB",
+  france: "FR", paris: "FR", switzerland: "CH", zurich: "CH", austria: "AT", vienna: "AT",
+  belgium: "BE", brussels: "BE", czech: "CZ", czechia: "CZ", prague: "CZ", poland: "PL",
+  warsaw: "PL", ireland: "IE", dublin: "IE", lithuania: "LT", latvia: "LV", estonia: "EE",
+  hungary: "HU", budapest: "HU", romania: "RO", bucharest: "RO", bulgaria: "BG", sofia: "BG",
+  greece: "GR", athens: "GR", cyprus: "CY", moldova: "MD", chisinau: "MD", ukraine: "UA",
+  kyiv: "UA", russia: "RU", moscow: "RU", kazakhstan: "KZ", almaty: "KZ", armenia: "AM",
+  yerevan: "AM", azerbaijan: "AZ", baku: "AZ", georgia: "GE", tbilisi: "GE", iraq: "IQ",
+  "united arab emirates": "AE", dubai: "AE", uae: "AE", qatar: "QA", doha: "QA", oman: "OM",
+  "united states": "US", "usa": "US", america: "US", us: "US", ashburn: "US", dallas: "US",
+  chicago: "US", "new york": "US", "los angeles": "US", seattle: "US", miami: "US",
+  canada: "CA", toronto: "CA", vancouver: "CA", montreal: "CA", spain: "ES", madrid: "ES",
+  barcelona: "ES", italy: "IT", rome: "IT", milan: "IT", portugal: "PT", lisbon: "PT",
+  luxembourg: "LU", albania: "AL", serbia: "RS", croatia: "HR", slovenia: "SI",
+  slovakia: "SK", malaysia: "MY", thailand: "TH", singapore: "SG", japan: "JP", tokyo: "JP",
+  "south korea": "KR", seoul: "KR", india: "IN", "hong kong": "HK", china: "CN",
+  australia: "AU", sydney: "AU", melbourne: "AU", brazil: "BR", saopaulo: "BR",
+  "sao paulo": "BR", argentina: "AR", mexico: "MX", "south africa": "ZA", egypt: "EG",
+  nigeria: "NG", kenya: "KE", morocco: "MA"
+};
+/* Provider hostnames carry their datacentre, which is a better signal than a
+ * remark an upstream rewrote. Region strings for Hetzner / Oracle / DigitalOcean
+ * / Vultr / AWS / Azure / Aeza / Cloudflare-Vultr hybrids. */
+const DATACENTERS = [
+  [/\bhel1\b|hel1\.|helsinki/i, "FI", "Hetzner Helsinki"],
+  [/\bnbg1?\b|nbg1\.|nuremberg|nuernberg/i, "DE", "Hetzner Nuremberg"],
+  [/\bfsn1\b|fsn1\.|falkenstein/i, "DE", "Hetzner Falkenstein"],
+  [/\bdb[12]\b|db1\.|db2\.|frankfurt/i, "DE", "Frankfurt"],
+  [/\bams[0-9]?\b|amsterdam/i, "NL", "Amsterdam"],
+  [/\blon[0-9]?\b|london\b/i, "GB", "London"],
+  [/\bpar[0-9]?\b|paris\b/i, "FR", "Paris"],
+  [/\bwar[0-9]?\b|warsaw/i, "PL", "Warsaw"],
+  [/\bmad[0-9]?\b|madrid/i, "ES", "Madrid"],
+  [/\bmil[0-9]?\b|milan/i, "IT", "Milan"],
+  [/\bist\b|istanbul/i, "TR", "Istanbul"],
+  [/\bank\b|ankara/i, "TR", "Ankara"],
+  [/\bizz\b|izmir/i, "TR", "Izmir"],
+  [/\bash\b|ashburn|virginia|\biad\b/i, "US", "US East (Ashburn)"],
+  [/\bdal\b|dallas|\biad-dal/i, "US", "US Dallas"],
+  [/\blax\b|losangeles|los-angeles|\bsea\b|seattle/i, "US", "US West"],
+  [/\bnyc?\b|newyork|new-york|\bmia\b|miami|\bchi\b|chicago|atlanta/i, "US", "US Central/East"],
+  [/\bsin\b|singapore/i, "SG", "Singapore"],
+  [/\bnrt\b|tokyo/i, "JP", "Tokyo"],
+  [/\bicn\b|seoul/i, "KR", "Seoul"],
+  [/\bbom\b|\bhyd\b|mumbai|bangalore|india/i, "IN", "India"],
+  [/\bsyd\b|sydney/i, "AU", "Sydney"],
+  [/\bgru\b|saopaulo|sao-paulo/i, "BR", "Sao Paulo"],
+  [/\bdxb\b|dubai/i, "AE", "Dubai"],
+  [/\bfra[0-9]?\b/i, "DE", "Frankfurt"],
+  [/\bjoh\b|jakarta/i, "ID", "Jakarta"],
+  [/\btbl\b|tbilisi/i, "GE", "Tbilisi"],
+  [/\bbaq\b|baku/i, "AZ", "Baku"],
+  [/\bere\b|yerevan/i, "AM", "Yerevan"],
+  [/\btehran|\bivr\b|\btkh\b/i, "IR", "Tehran"]
+];
+
+function flagOf(code) {
+  if (!code || !/^[A-Z]{2}$/.test(code)) return "";
+  let out = "";
+  for (const ch of code) out += String.fromCodePoint(0x1f1e6 + (ch.charCodeAt(0) - 65));
+  return out;
+}
+function countryName(code) { return GEO_NAMES[code] || ""; }
+
+/** Two-letter country code from free text: flag emoji, country word, or a code. */
+function geoOf(text) {
+  const s = String(text || "");
+  if (!s) return "";
+  const pairs = s.match(/[\ud83c-\udfff][\udc00-\udfff]/g);
+  if (pairs) {
+    const letters = pairs.map((p) => {
+      const cp = p.codePointAt(0);
+      return cp >= 0x1f1e6 && cp <= 0x1f1ff ? String.fromCharCode(0x41 + cp - 0x1f1e6) : "";
+    }).join("");
+    if (/^[A-Z]{2}$/.test(letters)) return letters;
+  }
+  const low = s.toLowerCase();
+  const keys = Object.keys(GEO_ALIASES).sort((a, b) => b.length - a.length);
+  for (const k of keys) if (low.indexOf(k) !== -1) return GEO_ALIASES[k];
+  const two = s.match(/(?:^|[\s\-_.(\[])([A-Z]{2})(?:$|[\s\-_.)\]])/);
+  if (two && (GEO_NAMES[two[1]] || two[1] === "UK")) return two[1] === "UK" ? "GB" : two[1];
+  return "";
+}
+
+/** { geo, place } inferred from the hostname; place is a human datacentre name. */
+function geoFromHost(host) {
+  const h = String(host || "");
+  for (const [re, code, place] of DATACENTERS) if (re.test(h)) return { geo: code, place };
+  const oc = h.match(/([a-z]{2})-([a-z]+)-\d+\.oraclecloud\.com/i);
+  if (oc) { const g = geoOf(oc[2]); if (g) return { geo: g, place: "Oracle " + oc[2] }; }
+  return { geo: "", place: "" };
+}
+
+const AD_WORDS = /join|subscribe|channel|telegram|t\.me|wa\.me|github\.com|https?:|@\w|free ?vpn|🔥|🟣|✈️|📢|🆘|🚀|✅|promo|giveaway/i;
+
+/** The text a row is named by. Many feeds stamp every node with the same
+ * "join my channel" advertisement, which is noise at best and a phishing nudge
+ * at worst, so ad-only remarks fall back to what is actually useful: the country
+ * and the address. The link that gets copied is never touched. */
+function cleanRemark(n) {
+  const raw = String((n && n.remark) || "").replace(/\+/g, " ").trim();
+  const kept = raw.split(/[|｜;]+/).map((p) => p.trim()).filter((p) => p && !AD_WORDS.test(p) && p.length <= 60);
+  if (kept.length) return kept.join(" · ").slice(0, 72);
+  const where = countryName(n && n.geo) || (n && n.geo) || "";
+  const place = (n && n.place) || (n && n.host) || "";
+  return [where, place].filter(Boolean).join(" · ") || "unnamed node";
+}
+
+/** +score for a node's location as seen from Iran; 0 when unknown. */
+function geoScore(code) {
+  if (!code) return 0;
+  for (const tier of Object.keys(GEO_TIERS)) if (GEO_TIERS[tier].indexOf(code) !== -1) return GEO_SCORE[tier];
+  return 0;
+}
 
 const GH_RAW = /^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/;
 const GH_BLOB = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:blob|raw)\/([^/]+)\/(.+)$/;
@@ -124,15 +324,34 @@ function urlCandidates(url) {
   return [...new Set(out)];
 }
 
-async function fetchWithTimeout(url, timeoutMs, extraHeaders) {
+async function fetchWithTimeout(url, timeoutMs, extraHeaders, maxBytes) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctl.signal, redirect: "follow",
       headers: Object.assign({ accept: "text/plain,*/*" }, extraHeaders || {}) });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    return await res.text();
-  } finally { clearTimeout(t); }
+    if (!maxBytes || !res.body || !res.body.getReader) {
+      const text = await res.text();
+      return { text, truncated: false };
+    }
+    // Read at most maxBytes: these feed files run to megabytes and a phone on
+    // mobile data should not download all of them for a first look.
+    const reader = res.body.getReader();
+    const td = new TextDecoder();
+    let got = 0, raw = 0, out = "";
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      out += td.decode(chunk.value, { stream: true });
+      raw += chunk.value ? chunk.value.byteLength : 0;
+      if (raw >= maxBytes) {
+        try { await reader.cancel(); } catch (e) {}
+        return { text: out + td.decode(), truncated: true };
+      }
+    }
+    return { text: out + td.decode(), truncated: false };
+  } finally { clearTimeout(t); ctl.abort(); }
 }
 
 /** Fetch a GitHub text file, trying mirrors. api.github.com returns JSON. */
@@ -142,12 +361,14 @@ async function fetchText(url, opts = {}) {
   for (const u of urlCandidates(url)) {
     tried.push(u);
     try {
-      let body = await fetchWithTimeout(u, timeoutMs,
-        u.includes("api.github.com") ? { accept: "application/vnd.github.raw+json" } : null);
+      let got = await fetchWithTimeout(u, timeoutMs,
+        u.includes("api.github.com") ? { accept: "application/vnd.github.raw+json" } : null,
+        opts.maxBytes);
+      let body = got && got.text;
       if (u.includes("api.github.com")) {
-        try { body = JSON.parse(body).content ? b64decode(JSON.parse(body).content) : body; } catch {}
+        try { const j = JSON.parse(body); if (j && j.content) body = b64decode(j.content); } catch (e) {}
       }
-      if (body && body.length > 20) return { text: body, via: u, tried };
+      if (body && body.length > 20) return { text: body, via: u, tried, truncated: !!(got && got.truncated) };
     } catch (e) { /* next mirror */ }
   }
   throw new Error("all mirrors failed for " + url + " (" + tried.length + " tried)");
@@ -319,7 +540,8 @@ function preScore(n) {
   if (n.probeable) s += 30;
   if (n.isIp) s -= 5;
   const hay = n.remark + " " + (n.alpn || "");
-  if (/\bUS\b|🇺🇸|America|United States|US-|_US|US_/i.test(n.remark)) s += 20;
+  s += geoScore(n.geo || geoOf(n.remark) || geoFromHost(n.host).geo);
+  if (n.verifiedBy) s += 40;                 // the source ran its own checks
   for (const r of BAD_MARKERS) if (r.test(hay)) s -= 60;
   return s;
 }
@@ -327,6 +549,40 @@ function preScore(n) {
 function dedupeKey(n) {
   return [n.proto, n.host, n.port, n.userId || n.password || "", n.security, n.network,
           n.path, n.sid || n.pbk || ""].join("|");
+}
+
+/** Parse one feed's text into nodes that already know where they are. */
+function collect(text, meta = {}) {
+  const nodes = extractLinks(String(text || "")).map(parseLink).filter((n) => n && n.ok);
+  for (const n of nodes) {
+    const fromHost = geoFromHost(n.host);
+    if (!n.geo) n.geo = meta.geo || geoOf(n.remark) || fromHost.geo || "";
+    if (!n.place) n.place = fromHost.place || "";
+    if (meta.geo && geoOf(n.remark) && geoOf(n.remark) !== meta.geo) n.geoConflict = true;
+    if (!n.feed) n.feed = meta.id || "";
+    if (meta.trust && !n.verifiedBy) n.verifiedBy = meta.trust;
+  }
+  return nodes;
+}
+
+/** Merge per-feed lists: one copy per node, best score wins, a known country is
+ *  never lost to a duplicate that does not carry one. */
+function mergeFeeds(lists) {
+  const seen = new Map();
+  for (const list of lists) {
+    for (const n of list || []) {
+      if (!n || !n.ok) continue;
+      const k = dedupeKey(n);
+      const cur = seen.get(k);
+      const sc = preScore(n);
+      if (!cur) { seen.set(k, { node: n, score: sc }); continue; }
+      if (!cur.node.geo && n.geo) cur.node.geo = n.geo;
+      if (!cur.node.place && n.place) cur.node.place = n.place;
+      if (!cur.node.verifiedBy && n.verifiedBy) { cur.node.verifiedBy = n.verifiedBy; cur.score = preScore(cur.node); }
+      if (cur.score < sc) seen.set(k, { node: n, score: sc });
+    }
+  }
+  return [...seen.values()].sort((a, b) => b.score - a.score).map((v) => v.node);
 }
 
 /** Dedupe + sort best-first. */
@@ -578,6 +834,52 @@ async function findWorking(nodes, opts = {}) {
   return { working: good, scanned: done };
 }
 
+/* Two-stage sweep, because a browser test costs a round trip per node and the
+ * pool is now in the thousands:
+ *   stage 1  one handshake each over the whole screened pool, at high
+ *            concurrency, to find who answers at all (dead hosts fail fast);
+ *   stage 2  the three-sample ping only on the fastest responders, so the
+ *            measurement budget goes to nodes that could actually be listed.
+ * Anything that does not answer every sample, or whose median ping is a junk
+ * value, is dropped - it never reaches the list. */
+async function findBest(nodes, opts = {}) {
+  const onProgress = opts.onProgress || function(){};
+  const pool = nodes.slice(0, Math.max(20, opts.pool || 800));
+  const screenMs = opts.screenTimeoutMs || 2500;
+  const concurrency = Math.max(1, Math.min(opts.concurrency || 24, 48));
+  const failFastAfter = opts.failFastAfter === undefined ? 200 : opts.failFastAfter;
+  const queue = pool.slice();
+  const answered = [];
+  let screened = 0, aborted = false;
+
+  const screener = async () => {
+    while (queue.length && !aborted) {
+      const n = queue.shift();
+      let v = null;
+      try { v = await probeNode(n, { timeoutMs: screenMs }); } catch (e) { v = null; }
+      screened++;
+      const rtt = v && v.state === "verified" ? v.rttMs : NaN;
+      if (v && v.state === "verified" && isFinite(rtt)) { n.screenMs = rtt; answered.push(n); }
+      onProgress(screened, pool.length, n, answered.length, "screen");
+      // A network that blocks these ports would otherwise burn every timeout.
+      if (failFastAfter && screened >= failFastAfter && !answered.length) aborted = true;
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, screener));
+
+  answered.sort((a, b) => (a.screenMs || 0) - (b.screenMs || 0));
+  const measure = Math.max(1, opts.measure || 180);
+  const cands = answered.slice(0, measure);
+  let measured = 0;
+  const out = await findWorking(cands, {
+    concurrency: Math.min(concurrency, 12), max: measure, timeoutMs: opts.timeoutMs || 7000,
+    samples: opts.samples || 3, gapMs: opts.gapMs, minMs: opts.minMs, maxMs: opts.maxMs,
+    onProgress: (d, total, n, good) => { measured = d; onProgress(d, cands.length, n, good, "ping"); }
+  });
+  return { working: out.working, screened, answered: answered.length, measured: cands.length,
+           scanned: out.scanned, pool: pool.length, abortedEarly: aborted };
+}
+
 /* one-line summary used by the UI */
 function describe(n) {
   const sec = n.security === "reality" ? "reality" : n.security === "tls" ? "tls" : "no-tls";
@@ -587,22 +889,30 @@ function describe(n) {
 /* export for node tests and for the browser bundle */
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { FEEDS, urlCandidates, extractLinks, parseLink, prepare, preScore, dedupeKey,
+    collect, mergeFeeds, geoOf, geoFromHost, geoScore, flagOf, countryName, GEO_TIERS, findBest, cleanRemark, AD_WORDS,
     probeNode, probeAll, rank, wsProbe, httpProbe, exportLinks, exportSubscription, clashYaml,
     describe, portBlocked, b64decode, b64encode, fetchText, buildVlessLink,
-    median, isUsablePing, pingNode, findWorking };
+    median, isUsablePing, pingNode, findWorking, fetchWithTimeout };
 }
 
 
-const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findWorking, httpProbe, isUsablePing, median, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, splitHostPort, urlCandidates, wsProbe };
+const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_ALIASES, GEO_NAMES, GEO_SCORE, GEO_TIERS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, cleanRemark, collect, countryName, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findBest, findWorking, flagOf, geoFromHost, geoOf, geoScore, httpProbe, isUsablePing, median, mergeFeeds, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, splitHostPort, urlCandidates, wsProbe };
 
-/* app.js — one action: fetch → verify through this device's internet → list the
- * working ones. Screen-reader-first: a real listbox, arrow-key navigation,
- * polite live-region stage announcements (never per-node chatter), and copy on
- * Enter. No other controls exist on the page by design. */
+/* app.js — one action: fetch every feed → verify through this device's own
+ * internet → list the working ones, fastest first. Screen-reader-first: a real
+ * listbox, arrow-key navigation, polite live-region stage announcements (never
+ * per-node chatter), errors that interrupt, and copy on Enter. No other
+ * controls exist on the page by design. */
 (function () {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  let NODES = [], ACTIVE = -1, running = false;
+  let NODES = [], ALL = [], ACTIVE = -1, running = false, phase = "";
+
+  /* How much of the pool to touch, per stage. Browsers cap sockets per host,
+   * not per destination, so screening many different nodes at once is fine. */
+  const POOL = 800;          // nodes given one handshake
+  const MEASURE = 200;       // of those, the quickest get the 3-sample ping
+  const CONCURRENCY = 24;
 
   /* Two live regions, because they do different jobs: progress and results are
    * polite (#status, so it never talks over the user), while a failure has to
@@ -640,14 +950,26 @@ const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK
   /* ------------------------------------------------------------- rendering -- */
   /* The row on screen is dense with separators and monospace noise; a screen
    * reader would read "· no-tls" out loud. Give the option a sentence instead,
-   * leading with the ping because that is what the user is comparing. */
+   * leading with the ping because that is what the user is comparing, and
+   * naming the country because that is what they are choosing between. */
+  function whereOf(n) {
+    const name = Core.countryName(n.geo) || (n.geo ? n.geo : "");
+    if (!name) return "";
+    return n.place ? name + " (" + n.place + ")" : name;
+  }
+
   function rowLabel(n, i) {
     const enc = n.security === "reality" ? "encrypted with Reality"
       : n.security === "tls" ? "encrypted with TLS" : "not encrypted";
     const via = n.network === "ws" ? "WebSockets" : String(n.network || "tcp");
-    return `Ping ${n.pingMs} milliseconds. ${n.remark || "node " + (i + 1)}. ` +
-           `${n.proto} at ${n.host}, port ${n.port}, over ${via}, ${enc}.`;
+    const where = whereOf(n);
+    return `Ping ${n.pingMs} milliseconds.` + (where ? ` ${where}.` : "") +
+           ` ${Core.cleanRemark(n)}.` +
+           ` ${n.proto} at ${n.host}, port ${n.port}, over ${via}, ${enc}.` +
+           (n.verifiedBy ? " The source had already tested this node before publishing it." : "");
   }
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   function render() {
     const ul = $("#list");
@@ -660,11 +982,17 @@ const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK
       li.dataset.i = String(i);
       li.setAttribute("aria-label", rowLabel(n, i));
       const unenc = !(n.security === "tls" || n.security === "reality");
+      const hasFlag = /[\ud83c-\udfff][\udc00-\udfff]/.test(String(n.remark || "").slice(0, 6));
+      const flag = hasFlag ? "" : Core.flagOf(n.geo);
       li.innerHTML =
         `<span class="ping">${n.pingMs}&nbsp;ms</span>` +
-        `<span class="who"><b>${esc(n.remark || "node " + (i + 1))}</b>` +
-        `<span>${esc(n.proto)} · ${esc(n.host)}:${esc(n.port)} · ${esc(n.network === "ws" ? "ws " + (n.path || "/") : n.network)} · ${esc(n.security || "none")}` +
-        (unenc ? `</span><span class="risk">unencrypted</span>` : `</span>`) +
+        `<span class="who"><b>${flag ? esc(flag) + " " : ""}${esc(Core.cleanRemark(n))}</b>` +
+        `<span>${esc(n.proto)}:${esc(n.port)} · ${esc(n.host)}` +
+        ` · ${esc(n.network === "ws" ? "ws " + (n.path || "/") : n.network)}` +
+        (n.geo ? ` · ${esc(Core.countryName(n.geo) || n.geo)}${n.place ? " · " + esc(n.place) : ""}` : "") +
+        `</span>` +
+        (unenc ? `<span class="risk">unencrypted</span>` : ``) +
+        (n.verifiedBy ? `<span class="src">pre-tested by ${esc(n.feed || "source")}</span>` : ``) +
         `</span>` +
         `<button type="button" tabindex="-1" aria-hidden="true">Copy</button>`;
       ul.appendChild(li);
@@ -674,8 +1002,6 @@ const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK
     setActive(0, false);
     say(`${NODES.length} working configuration${NODES.length === 1 ? "" : "s"}. Focus is on the list: arrow keys to browse, Enter to copy.`, null);
   }
-
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   function setActive(i, focus) {
     const ul = $("#list"), items = ul.querySelectorAll('[role="option"]');
@@ -694,53 +1020,70 @@ const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK
     const btn = $("#btnGo");
     btn.disabled = true; btn.setAttribute("aria-busy", "true");
     $("#list").hidden = true; $("#list").innerHTML = "";
-    NODES = []; ACTIVE = -1;
+    NODES = []; ALL = []; ACTIVE = -1;
     const t0 = Date.now();
 
-    say("Fetching the public node feeds…");
-    const results = await Promise.allSettled(Core.FEEDS.map((f) => Core.fetchText(f.url, { timeoutMs: 15000 })));
-    let text = "";
-    const feedErrs = [];
+    say(`Reading ${Core.FEEDS.length} node sources…`);
+    const results = await Promise.allSettled(Core.FEEDS.map((f) =>
+      Core.fetchText(f.url, { timeoutMs: 20000, maxBytes: f.maxBytes || 900000 })));
+    const lists = [], failed = [], truncated = [];
     results.forEach((r, i) => {
-      if (r.status === "fulfilled" && r.value && r.value.text) text += "\n" + r.value.text;
-      else feedErrs.push(Core.FEEDS[i].id);
+      const meta = Core.FEEDS[i];
+      if (r.status === "fulfilled" && r.value && r.value.text) {
+        const nodes = Core.collect(r.value.text, meta);
+        if (nodes.length) lists.push(nodes); else failed.push(meta.id);
+        if (r.value.truncated) truncated.push(meta.id);
+      } else failed.push(meta.id);
     });
-    const fetched = results.filter((r) => r.status === "fulfilled").length;
-    if (!text.trim()) {
-      done("Could not reach any node feed from this connection. Check that this browser can open raw.githubusercontent.com, then try again.", "alert", btn);
+    if (!lists.length) {
+      done("Could not reach any node source from this connection. Check that this browser can open raw.githubusercontent.com, then try again.", "alert", btn);
       return;
     }
 
-    const links = Core.extractLinks(text);
-    const parsed = links.map(Core.parseLink).filter(Boolean);
-    if (!parsed.length) {
-      done(`Downloaded ${(text.length / 1024).toFixed(0)} KB but found no parsable configurations.`, "alert", btn);
-      return;
-    }
-    NODES = Core.prepare(parsed);
-    const probeable = NODES.filter((n) => n.network === "ws");
-    meter(`${links.length} links · ${NODES.length} unique · ${probeable.length} testable from a browser`);
+    ALL = Core.mergeFeeds(lists);
+    const probeable = ALL.filter((n) => n.network === "ws" && !Core.portBlocked(n.port));
+    const geoCount = ALL.filter((n) => n.geo).length;
+    meter(`${lists.length}/${Core.FEEDS.length} sources answered · ${ALL.length} unique configs · ` +
+          `${geoCount} with a known country · ${probeable.length} testable from a browser` +
+          (truncated.length ? ` · ${truncated.length} capped by size` : ""));
 
     if (!probeable.length) {
-      done("None of the published nodes use a transport a browser can test, so nothing could be verified. Nothing is shown rather than guessing.", "alert", btn);
+      done(`Read ${ALL.length} configurations but none use a transport a browser can test, so nothing could be verified. Nothing is shown rather than guessing.`, "alert", btn);
       return;
     }
 
-    say(`Testing ${Math.min(probeable.length, MAX)} nodes through your own connection — three handshakes each…`);
-    const out = await Core.findWorking(probeable, {
-      max: MAX, concurrency: 6, timeoutMs: 7000, samples: 3, minMs: 2,
-      onProgress: (d, total, _, good) => { meter(`${d}/${total} tested · ${good} working`); }
+    const screened = Math.min(probeable.length, POOL);
+    say(`Screening ${screened} nodes through your own connection, ${CONCURRENCY} at a time…`);
+    const out = await Core.findBest(probeable, {
+      pool: POOL, measure: MEASURE, concurrency: CONCURRENCY,
+      screenTimeoutMs: 2500, timeoutMs: 7000, samples: 3, minMs: 2,
+      onProgress: (count, total, n, good, p) => {
+        if (p !== phase) {
+          phase = p;
+          if (p === "ping") say(`Measuring the ping of the ${total} that answered — three handshakes each, a node has to answer every one.`);
+        }
+        meter(p === "screen" ? `screening ${count}/${total} · ${good} answered`
+                              : `pinging ${count}/${total} · ${good} stable`);
+      }
     });
+
     NODES = out.working;
     if (!NODES.length) {
-      done(`Tested ${out.scanned} nodes from here and none answered three times in a row. Your network may block these ports, or the published nodes are down. Nothing is shown, because nothing was proven.`, "alert", btn);
+      const why = !out.answered
+        ? `Sent ${out.screened} handshakes from here and nothing answered at all — your network or ISP is most likely blocking these ports.`
+        : `Tested ${out.screened} nodes from here; ${out.answered} answered once but none answered three times in a row, which is how a flaky node behaves.`;
+      done(`${why} Nothing is shown, because nothing was proven.`, "alert", btn);
       return;
     }
     render();
-    meter(`${out.scanned} tested · ${NODES.length} working · ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    const secs = ((Date.now() - t0) / 1000).toFixed(0);
+    meter(`${out.screened} screened · ${out.answered} answered · ${out.measured} pinged · ${NODES.length} working · ${secs}s`);
+    if (failed.length) {
+      say(`${NODES.length} working configurations, listed fastest first. Focus is on the list: arrow keys to browse, Enter to copy. ` +
+          `${failed.length} of ${Core.FEEDS.length} sources did not answer, so a second press may find more.`, null);
+    }
     done0(btn);
   }
-  const MAX = 220;
 
   function done0(btn) { btn.disabled = false; btn.removeAttribute("aria-busy"); btn.textContent = "Get me configurations"; running = false; }
   function done(msg, kind, btn) { say(msg, kind); meter(""); if (btn) done0(btn); }
