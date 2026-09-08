@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
-<!-- built 2026-09-08 05:54 :: single-file, no external assets -->
+<!-- built 2026-09-08 06:41 :: single-file, no external assets -->
 <title>Working VPN configurations</title>
 <style>
   :root {
@@ -301,6 +301,18 @@ function countryFeeds(codes) {
         id: "c" + c.code + "_" + who, label: c.name + " · country file", geo: c.code,
         trust: who === "au" || who === "rad" ? "verified" : "", url, maxBytes: 500000
       });
+    }
+  }
+  /* A source that keeps one big list per country (the US file in SoliSpirit holds
+   * far more than its Countries/ split) is exactly what a country pick wants, so
+   * those feeds come along too - deduped, since the country file is often the same
+   * URL under another name. */
+  if (want) {
+    const byUrl = new Set(out.map((f) => f.url));
+    for (const f of FEEDS) {
+      if (want.indexOf(f.geo) === -1 || byUrl.has(f.url)) continue;
+      byUrl.add(f.url);
+      out.push(f);
     }
   }
   return out;
@@ -764,6 +776,74 @@ const FORBIDDEN_PORTS = new Set([21,22,23,25,43,53,69,70,71,77,79,87,95,101,102,
 
 function portBlocked(port) { return FORBIDDEN_PORTS.has(parseInt(port, 10)); }
 
+/* What a browser is actually allowed to dial for a node, and why if it is not.
+ *
+ * This is the heart of the tool, and the reason earlier builds came back empty.
+ * Nearly every free node sits behind a CDN (Cloudflare, Fastly): the "address" in
+ * the link is one anycast edge, while the origin is chosen by TLS SNI and the Host
+ * header. A browser derives both from the URL's own authority and cannot be told
+ * otherwise, so dialling the IP asks that edge for something it cannot route - and
+ * the failure is indistinguishable from a dead node. Dialling the *name* the config
+ * carries is what actually reaches the node, and it is the only honest ping. */
+function dialTarget(n, opts) {
+  opts = opts || {};
+  const out = { url: "", kind: "", why: "", viaName: false, authority: "" };
+  if (!n || !n.ok) { out.why = "unparsable"; return out; }
+  if (n.network !== "ws") { out.why = "transport-" + (n.network || "none"); return out; }
+  if (portBlocked(n.port)) { out.why = "blocked-port"; return out; }
+  /* trojan and shadowsocks put their own bytes where the HTTP upgrade belongs, so
+     no browser can complete a handshake with them however alive the node is */
+  if (n.proto !== "vless" && n.proto !== "vmess") { out.why = "proto-" + n.proto; return out; }
+  if (n.security === "reality") { out.why = "reality"; return out; }
+  const plain = n.security !== "tls";
+  /* A link with no TLS has no certificate to argue about, so "insecure" only means
+   * something when security=tls: the node expects a certificate the browser will not
+   * accept, and unlike a VPN app a browser cannot be told to ignore that. */
+  if (!plain && (n.insecure || n.allowInsecure)) { out.why = "self-signed"; return out; }
+  /* an https page may not open a plaintext socket at all - the browser refuses it
+     before it leaves the device, which is not the node's fault and not a dead node */
+  if (plain && opts.allowPlain === false) { out.why = "plain-on-https"; return out; }
+
+  const host = String(n.host || "");
+  const isIp = n.isIp === true || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.charAt(0) === "[" || host.indexOf("::") === 0;
+  const sni = String(n.sni || "").trim();
+  const hdr = String(n.hostHeader || "").trim();
+  const isName = (x) => !!x && x.indexOf(".") > 0 && !/^\d+$/.test(x);
+  /* the name the origin is picked by: SNI for TLS, Host for plain. Both end up in
+     the URL's authority in a browser, which is exactly why dialling it works. */
+  let authority = host, viaName = false;
+  if (isIp) {
+    const want = sni || hdr;
+    if (sni && hdr && sni !== hdr) { out.why = "host-and-sni-differ"; return out; }
+    if (isName(want)) { authority = want; viaName = true; }
+    else if (!plain) { out.why = "no-sni"; return out; }      // TLS to a bare IP: no certificate can ever match
+  } else {
+    if (sni && sni !== host) { out.why = "host-and-sni-differ"; return out; }
+    if (hdr && hdr !== host) { out.why = "needs-host-header"; return out; }
+  }
+
+  let path = n.path || "/";
+  if (path.charAt(0) !== "/") path = "/" + path;
+  out.authority = authority;
+  out.viaName = viaName;
+  out.kind = plain ? "ws" : "wss";
+  out.url = out.kind + "://" + authority + ":" + n.port + path;
+  return out;
+}
+
+/* Split a node list into what this page can prove and what it cannot, counting the
+ * reason per node, so the page can say "941 of these are unreachable from a browser"
+ * instead of reporting a dead internet. */
+function classify(nodes, opts) {
+  const list = nodes || [], testable = [], skipped = {};
+  for (const n of list) {
+    const d = dialTarget(n, opts);
+    if (d.url) { n._dial = d; testable.push(n); }
+    else { skipped[d.why] = (skipped[d.why] || 0) + 1; }
+  }
+  return { testable, skipped, skipTotal: list.length - testable.length };
+}
+
 function wsProbe(url, timeoutMs) {
   return new Promise((resolve) => {
     let done = false, ws = null;
@@ -798,15 +878,20 @@ async function probeNode(n, opts = {}) {
   if (portBlocked(n.port)) { res.detail = `port ${n.port} is blocked by browsers (not the node's fault)`; return res; }
 
   if (n.network === "ws") {
-    const scheme = (n.security === "tls" || n.security === "reality") ? "wss" : "ws";
-    let path = n.path || "/";
-    if (!path.startsWith("/")) path = "/" + path;
-    const url = `${scheme}://${n.host}:${n.port}${path}`;
-    const r = await wsProbe(url, timeoutMs);
-    if (r.ok) { res.state = "verified"; res.rttMs = r.rttMs; res.detail = `WS handshake OK (${scheme})`; return res; }
-    if (n.security === "tls" && !n.isIp && !n.insecure) { res.state = "failed"; res.detail = r.reason; return res; }
-    res.state = n.security === "tls" ? "unverifiable" : "failed";
-    res.detail = r.reason + (n.security === "tls" ? " · self-signed? browser cannot skip cert checks" : "");
+    const d = (n._dial && n._dial.url) ? n._dial : dialTarget(n, opts);
+    if (!d.url) { res.state = "unverifiable"; res.why = d.why; res.detail = d.why; return res; }
+    const r = await wsProbe(d.url, timeoutMs);
+    if (r.ok) {
+      res.state = "verified"; res.rttMs = r.rttMs; res.viaName = d.viaName; res.kind = d.kind;
+      res.detail = d.kind + " handshake OK" + (d.viaName ? " to " + d.authority + " (the link gives a CDN edge, not this name)" : "");
+      return res;
+    }
+    /* Anything we were allowed to dial and that did not answer is a failed node -
+     * including a TLS node whose certificate the browser rejected, because from here
+     * the two look identical and neither would carry traffic. Only a link the browser
+     * may not attempt at all is "unverifiable", and that is decided before dialling. */
+    res.state = "failed";
+    res.detail = r.reason + (d.kind === "wss" ? " \u00b7 or a certificate this browser will not accept" : "");
     return res;
   }
 
@@ -973,7 +1058,13 @@ async function pingNode(n, opts = {}) {
     }
     attempts++;
     let v = null;
-    try { v = await probeNode(n, { timeoutMs }); } catch (e) { v = { state: "error", detail: String((e && e.message) || e) }; }
+    try { v = await probeNode(n, Object.assign({ timeoutMs }, opts)); } catch (e) { v = { state: "error", detail: String((e && e.message) || e) }; }
+    /* "unverifiable" is not a verdict about the node: the browser was not allowed to
+       try, or a certificate rule got in the way. Stop and say so, do not call it dead. */
+    if (v && v.state === "unverifiable") {
+      return { ok: false, unverifiable: true, why: v.why || "unverifiable", pingMs: rtts.length ? median(rtts) : null,
+               detail: v.detail || "this page cannot test this node", answered: rtts.length, attempts };
+    }
     if (v && v.state === "verified" && isFinite(v.rttMs || NaN)) rtts.push(v.rttMs);
     else {
       failures++;
@@ -1001,7 +1092,7 @@ async function findWorking(nodes, opts = {}) {
   const budget = Math.min(nodes.length, opts.max || nodes.length);
   const want = opts.want || 0;
   const queue = nodes.slice(0, budget).map((n) => n);
-  const good = [];
+  const good = [], unverifiable = [];
   let done = 0;
   const worker = async () => {
     while (queue.length && !(want && good.length >= want)) {
@@ -1011,14 +1102,16 @@ async function findWorking(nodes, opts = {}) {
       catch (e) { r = { ok: false, pingMs: null, detail: String((e && e.message) || e) }; }
       n.pingMs = r.pingMs;
       n.stability = r.answered && r.attempts ? `${r.answered}/${r.attempts}` : "";
-      n.verdict = { state: r.ok ? "verified" : "failed", rttMs: r.pingMs, detail: r.detail };
+      n.verdict = { state: r.unverifiable ? "unverifiable" : (r.ok ? "verified" : "failed"),
+                    rttMs: r.pingMs, detail: r.detail, why: r.why || "" };
       if (r.ok) good.push(n);
+      else if (r.unverifiable) unverifiable.push(n);
       onProgress(++done, budget, n, good.length);
     }
   };
   await Promise.all(Array.from({ length: concurrency }, worker));
   good.sort((a, b) => a.pingMs - b.pingMs);
-  return { working: good, scanned: done };
+  return { working: good, scanned: done, unverifiable };
 }
 
 /* Per-country medians from what just answered. This is how "smart select" finds
@@ -1065,29 +1158,67 @@ function smartPick(nodes, opts = {}) {
 async function findBest(nodes, opts = {}) {
   const onProgress = opts.onProgress || function(){};
   const concurrency = Math.max(1, Math.min(opts.concurrency || 128, 160));
-  const pool = nodes.slice(0, Math.max(20, opts.pool || 1200));
   const screenMs = opts.screenTimeoutMs || 1800;
   const failFastAfter = opts.failFastAfter === undefined ? 250 : opts.failFastAfter;
+  /* The single most important step: a browser may only dial some of these links.
+   * The rest are not dead nodes, they are nodes a page cannot reach at all - so they
+   * are counted by reason and reported, never mixed into the pass/fail sweep. */
+  const cls = classify(nodes, { allowPlain: opts.allowPlain });
+  const pool = cls.testable.slice(0, Math.max(20, opts.pool || 1200));
   const queue = pool.slice();
-  const answered = [];
-  let screened = 0, aborted = false;
+  const answered = [], timedOut = [];
+  let screened = 0, refusedCount = 0, timedOutCount = 0, aborted = false;
 
   const screener = async () => {
     while (queue.length && !aborted) {
       const n = queue.shift();
       let v = null;
-      try { v = await probeNode(n, { timeoutMs: screenMs }); } catch (e) { v = null; }
+      try { v = await probeNode(n, { timeoutMs: screenMs, allowPlain: opts.allowPlain }); } catch (e) { v = null; }
       screened++;
       const rtt = v && v.state === "verified" ? v.rttMs : NaN;
-      if (v && v.state === "verified" && isFinite(rtt)) { n.screenMs = rtt; answered.push(n); }
+      if (v && v.state === "verified" && isFinite(rtt)) { n.screenMs = rtt; n._kind = v.kind; answered.push(n); }
+      else if (v && v.state === "unverifiable") { cls.skipped[v.why || "other"] = (cls.skipped[v.why || "other"] || 0) + 1; cls.skipTotal++; }
+      else {
+        if (v && (v.detail || "").indexOf("timeout") !== -1) { timedOutCount++; if (n.pingMs === undefined) timedOut.push(n); }
+        else refusedCount++;
+      }
       onProgress(screened, pool.length, n, answered.length, "screen");
-      // a network that blocks these ports would otherwise burn every timeout
-      if (failFastAfter && screened >= failFastAfter && !answered.length) aborted = true;
+      /* Only a storm of *refusals* means the ports are blocked. Timeouts on their own
+       * are what a busy phone line looks like, and those nodes get a patient retry. */
+      if (failFastAfter && refusedCount >= failFastAfter && !answered.length) aborted = true;
     }
   };
   await Promise.all(Array.from({ length: concurrency }, screener));
+
+  const minYield = opts.minYield === undefined ? 12 : opts.minYield;
+  const patientMax = opts.patientMax === undefined ? 300 : opts.patientMax;
+  const t0 = Date.now();
+  /* The screening time is allowed to run long; nothing else is. A phone on a busy
+   * network must still get a list rather than a spinner. */
+  const budgetMs = opts.budgetMs === undefined ? 45000 : opts.budgetMs;
+  let patient = 0, budgetReached = false;
+  const patientTotal = pool.length + Math.min(timedOut.length, patientMax);
+  if (!aborted && patientMax > 0 && answered.length < minYield && timedOut.length && Date.now() - t0 < budgetMs) {
+    // one patient pass, slower and gentler, for nodes that simply did not reply in time
+    const wait = Math.round(screenMs * 2.6);
+    const q = timedOut.slice(0, patientMax).slice();
+    const again = async () => {
+      while (q.length) {
+        if (Date.now() - t0 > budgetMs) { budgetReached = true; q.length = 0; break; }
+        const n = q.shift();
+        let v = null;
+        try { v = await probeNode(n, { timeoutMs: wait, allowPlain: opts.allowPlain }); } catch (e) { v = null; }
+        patient++;
+        if (v && v.state === "verified" && isFinite(v.rttMs)) { n.screenMs = v.rttMs; n._patient = true; n._kind = v.kind; answered.push(n); }
+        onProgress(screened + patient, patientTotal, n, answered.length, "screen");
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(24, concurrency) }, again));
+  }
   if (!answered.length) {
-    return { working: [], screened, answered: 0, measured: 0, scanned: 0, pool: pool.length, abortedEarly: aborted, ranks: [], picked: [] };
+    return { working: [], screened, answered: 0, measured: 0, scanned: 0, pool: pool.length, abortedEarly: aborted,
+             ranks: [], picked: [], dialable: cls.testable.length, skipped: cls.skipped, skipTotal: cls.skipTotal,
+             refused: refusedCount, timedOut: timedOutCount, patient };
   }
 
   answered.sort((a, b) => (a.screenMs || 0) - (b.screenMs || 0));
@@ -1100,20 +1231,26 @@ async function findBest(nodes, opts = {}) {
   }
   const measure = Math.max(1, opts.measure || 150);
   const cands = list.slice(0, measure);
+  /* When hardly anything answered, demanding a second handshake from the few that
+     did is how a page ends up showing nothing at all. Relax - and label it. */
+  const relaxed = opts.require !== 1 && answered.length < Math.max(minYield, (opts.want || 0) / 3);
+  const require = relaxed ? 1 : opts.require;
   let measured = 0;
   // the screening handshake is handed over as the first sample, so a node that
   // ends up listed has answered twice at minimum and three times at most
   for (const n of cands) n._seed = [n.screenMs];
   const out = await findWorking(cands, {
     concurrency: Math.min(concurrency, 48), max: cands.length, want: opts.want || 0,
-    timeoutMs: opts.timeoutMs || 6000, samples: opts.samples || 3, require: opts.require,
+    timeoutMs: opts.timeoutMs || 6000, samples: opts.samples || 3, require,
     gapMs: opts.gapMs, minMs: opts.minMs, maxMs: opts.maxMs,
     onProgress: (d, total, n, good) => { measured = d; onProgress(d, cands.length, n, good, "ping"); }
   });
   out.working.forEach((n) => { delete n._seed; });
-  // pass the seed in through pingNode
   return { working: out.working, screened, answered: answered.length, measured: cands.length,
-           scanned: out.scanned, pool: pool.length, abortedEarly: aborted, ranks, picked };
+           scanned: out.scanned, pool: pool.length, abortedEarly: aborted, ranks, picked,
+           dialable: cls.testable.length, skipped: cls.skipped, skipTotal: cls.skipTotal,
+           refused: refusedCount, timedOut: timedOutCount, patient, budgetReached,
+           unverifiable: (out.unverifiable || []).length, relaxed };
 }
 
 /* one-line summary used by the UI */
@@ -1124,16 +1261,11 @@ function describe(n) {
 
 /* export for node tests and for the browser bundle */
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { FEEDS, COUNTRIES, countryFeeds, urlCandidates, extractLinks, parseLink,
-    prepare, preScore, dedupeKey, collect, mergeFeeds, geoOf, geoFromHost, geoScore, flagOf,
-    countryName, GEO_TIERS, rankCountries, smartPick, findBest, COUNTRIES, COUNTRIES, COUNTRIES, findWorking, pingNode, probeNode,
-    probeAll, rank, wsProbe, httpProbe, exportLinks, exportSubscription, clashYaml, describe,
-    portBlocked, b64decode, b64encode, fetchText, fetchWithTimeout, buildVlessLink, median,
-    isUsablePing, cleanRemark, AD_WORDS, COUNTRY_SITES, countryFileUrl };
+  module.exports = { FEEDS, COUNTRIES, countryFeeds, urlCandidates, extractLinks, parseLink, prepare, preScore, dedupeKey, collect, mergeFeeds, geoOf, geoFromHost, geoScore, flagOf, countryName, GEO_TIERS, rankCountries, smartPick, findBest, findWorking, pingNode, probeNode, probeAll, rank, wsProbe, httpProbe, exportLinks, exportSubscription, clashYaml, describe, portBlocked, b64decode, b64encode, fetchText, fetchWithTimeout, buildVlessLink, median, isUsablePing, cleanRemark, AD_WORDS, COUNTRY_SITES, countryFileUrl, dialTarget, classify };
 }
 
 
-const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_ALIASES, GEO_NAMES, GEO_SCORE, GEO_TIERS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, cleanRemark, collect, countryFeeds, countryFileUrl, countryName, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findBest, findWorking, flagOf, geoFromHost, geoOf, geoScore, httpProbe, isUsablePing, median, mergeFeeds, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, rankCountries, smartPick, splitHostPort, urlCandidates, wsProbe };
+const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_ALIASES, GEO_NAMES, GEO_SCORE, GEO_TIERS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, classify, cleanRemark, collect, countryFeeds, countryFileUrl, countryName, dec, dedupeKey, describe, dialTarget, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findBest, findWorking, flagOf, geoFromHost, geoOf, geoScore, httpProbe, isUsablePing, median, mergeFeeds, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, rankCountries, smartPick, splitHostPort, urlCandidates, wsProbe };
 
 /* app.js — two tabs (Home, Preferences), one action: read the sources the
  * preference allows → verify through this device's own internet → list the
@@ -1153,6 +1285,30 @@ const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEE
   /* One handshake per node at ~128 in parallel is what makes this fast; the
    * confirmations below are the only extra traffic. */
   const CONCURRENCY = 128;
+  /* A page loaded over https may not open a plaintext WebSocket: the browser refuses
+   * it before it leaves the device, and the failure looks exactly like a dead server.
+   * Everything about the scan depends on knowing which side of that line we are on. */
+  const SECURE = (typeof window !== "undefined" && window.isSecureContext === true) ||
+                 (typeof location !== "undefined" && location.protocol === "https:");
+  const WHY = {
+    "plain-on-https": "want an unencrypted connection, which an https page is not allowed to open",
+    "needs-host-header": "need a Host header, and a browser sets that from the address alone",
+    "host-and-sni-differ": "need the certificate name and the Host header to be different names",
+    "self-signed": "present a certificate a browser will not accept (your VPN app can)",
+    "no-sni": "are TLS on a bare IP address, so no certificate can ever match",
+    "reality": "use Reality, which a browser cannot perform",
+    "proto-trojan": "are trojan, which has no web handshake to answer",
+    "proto-shadowsocks": "are shadowsocks, which a browser cannot speak",
+    "blocked-port": "are on a port browsers refuse to open",
+    "unparsable": "are not a complete configuration"
+  };
+  function explain(why) {
+    if (WHY[why]) return WHY[why];
+    if (why.indexOf("transport-") === 0) return `use ${why.slice(10)} instead of WebSockets, which a browser cannot send`;
+    if (why.indexOf("proto-") === 0) return `are ${why.slice(6)}, which a browser cannot speak`;
+    return why;
+  }
+
   const POOL_ALL = 1200;
   const POOL_COUNTRY = 700;
   const MEASURE = 150;
@@ -1282,14 +1438,24 @@ const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEE
     return n.place ? name + " (" + n.place + ")" : name;
   }
 
+  /* The ping you see was taken from the name we were able to dial. When the link only
+   * gives a CDN edge address, the row has to say which end was measured - otherwise it
+   * quietly claims a result for an IP that was never contacted. */
+  function dialOf(n) {
+    const d = n._dial || {};
+    return { host: d.authority || n.host, viaName: !!d.viaName, edge: n.host, kind: d.kind || "" };
+  }
+
   function rowLabel(n, i) {
     const enc = n.security === "reality" ? "encrypted with Reality"
       : n.security === "tls" ? "encrypted with TLS" : "not encrypted";
     const via = n.network === "ws" ? "WebSockets" : String(n.network || "tcp");
     const where = whereOf(n);
+    const dial = dialOf(n);
     return `Ping ${n.pingMs} milliseconds.` + (where ? ` ${where}.` : "") +
            ` ${Core.cleanRemark(n)}.` +
-           ` ${n.proto} at ${n.host}, port ${n.port}, over ${via}, ${enc}.` +
+           ` ${n.proto} at ${dial.host}, port ${n.port}, over ${via}, ${enc}.` +
+           (dial.viaName ? ` The link gives a CDN address, so ${dial.host} was dialled by name.` : ``) +
            (n.stability && n.stability.indexOf("3/") !== 0 ? ` It answered ${n.stability} of the checks.` : "") +
            (n.verifiedBy ? " The source had already tested this node before publishing it." : "");
   }
@@ -1312,7 +1478,8 @@ const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEE
       li.innerHTML =
         `<span class="ping">${n.pingMs}&nbsp;ms</span>` +
         `<span class="who"><b>${flag ? esc(flag) + " " : ""}${esc(Core.cleanRemark(n))}</b>` +
-        `<span>${esc(n.proto)}:${esc(n.port)} · ${esc(n.host)}` +
+        `<span>${esc(n.proto)}:${esc(n.port)} · ${esc(dialOf(n).host)}` +
+        (dialOf(n).viaName ? ` <i title="the link gives this CDN address">(link: ${esc(n.host)})</i>` : ``) + ` · ` +
         ` · ${esc(n.network === "ws" ? "ws " + (n.path || "/") : n.network)}` +
         (n.geo ? ` · ${esc(Core.countryName(n.geo) || n.geo)}${n.place ? " · " + esc(n.place) : ""}` : "") +
         `</span>` +
@@ -1363,46 +1530,51 @@ const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEE
     const t0 = Date.now();
     const pref = PREF.country;
     const isCode = pref !== "all" && pref !== "smart";
-    let feeds = isCode ? Core.countryFeeds([pref]) : Core.FEEDS;
-    if (!feeds.length) feeds = Core.FEEDS;
+    /* A country pick narrows what gets *scanned*, not what gets read: the per-country
+     * files hold a fraction of the same countries, so skipping the big lists would
+     * cost you the nodes that actually answer. */
+    const urls = new Set(Core.FEEDS.map((f) => f.url));
+    const extra = (Core.countryFeeds([pref]) || []).filter((f) => {
+      if (urls.has(f.url)) return false;      // the same file under another name: read it once
+      urls.add(f.url);
+      return true;
+    });
+    let feeds = isCode ? Core.FEEDS.concat(extra) : Core.FEEDS.slice();
     let attempted = feeds.length;          // how many files this press asked for
 
-    say(isCode ? `Reading ${feeds.length} ${countryNameOf(pref)} ${feeds.length === 1 ? "source" : "sources"}…`
-               : `Reading ${feeds.length} node sources…`);
+    say(`Reading ${feeds.length} node sources${isCode ? `, keeping ${countryNameOf(pref)}` : ""}…`);
     let res = await readAll(feeds);
     if (!res.lists.length) {
       done("Could not reach any node source from this connection. Check that this browser can open raw.githubusercontent.com, then try again.", "alert", btn);
       return;
     }
     let all = Core.mergeFeeds(res.lists);
-    let probeable = all.filter((n) => n.network === "ws" && !Core.portBlocked(n.port) && (!isCode || !n.geo || n.geo === pref));
-
-    if (isCode && probeable.length < 8) {           // thin country file: widen once
-      say(`The ${countryNameOf(pref)} files had only ${probeable.length} browser-testable node${probeable.length === 1 ? "" : "s"}, so the big sources are being read too…`);
-      const extraFeeds = Core.FEEDS.filter((f) => !feeds.some((g) => g.url === f.url));
-      attempted += extraFeeds.length;
-      const extra = await readAll(extraFeeds);
-      if (extra.lists.length) {
-        res = { lists: res.lists.concat(extra.lists), failed: res.failed.concat(extra.failed), truncated: res.truncated.concat(extra.truncated) };
-        all = Core.mergeFeeds(res.lists);
-        probeable = all.filter((n) => n.network === "ws" && !Core.portBlocked(n.port) && (!n.geo || n.geo === pref));
-      }
-    }
-
+    if (isCode) all = all.filter((n) => !n.geo || n.geo === pref);
+    /* The browser, not the node, decides what can be tried at all: a page loaded over
+     * https may not open a plaintext socket, and a link that needs its own Host header
+     * or a self-signed certificate is out of reach for any page. Sort those out here so
+     * they are reported as unreachable-from-a-page instead of being timed out and
+     * written off as dead servers - which is exactly what made a whole country look dead. */
+    const cls = Core.classify(all, { allowPlain: !SECURE });
+    const probeable = cls.testable;
+    const why = Object.entries(cls.skipped).sort((a, b) => b[1] - a[1]);
     const geoCount = all.filter((n) => n.geo).length;
-    meter(`${res.lists.length}/${attempted} sources answered · ${all.length} unique configs · ${geoCount} with a known country · ${probeable.length} testable from a browser`);
+    meter(`${res.lists.length}/${attempted} sources answered · ${all.length} unique configs · ${geoCount} with a known country · ${probeable.length} a browser can dial (${cls.skipTotal} cannot, for ${why.length} reasons)`);
 
     if (!probeable.length) {
-      done(`Read ${all.length} configurations but nothing usable for ${isCode ? countryNameOf(pref) : "these sources"} - either they do not use a transport a browser can test, or the country file is empty today. Nothing is shown rather than guessing.`, "alert", btn);
+      const diag = `${res.lists.length}/${attempted} sources answered · ${all.length} unique configs · 0 dialable by this page · ${cls.skipTotal} blocked by what a browser may do`;
+      meter(diag);
+      done(`Read ${all.length} configurations for ${isCode ? countryNameOf(pref) : "these sources"}, but a browser cannot dial any of them: ${why.slice(0, 3).map(([k, v]) => `${v} ${explain(k)}`).join(", ")}. These are not dead servers - your VPN app can reach many of them, this page cannot prove them.${SECURE ? " Save this file and open it from your device (or serve it over http://) to test the unencrypted ones too." : ""} Nothing is shown, because nothing was proven.`, "alert", btn);
+      meter(diag);
       return;
     }
 
     const pool = Math.min(probeable.length, isCode ? POOL_COUNTRY : POOL_ALL);
-    say(`Screening ${pool} nodes through your own connection, ${CONCURRENCY} at a time…`);
+    say(`Screening ${pool} nodes through your own connection, ${CONCURRENCY} at a time${SECURE ? ", all of them over TLS because this page is https" : ""}…`);
     const out = await Core.findBest(probeable, {
       pool, measure: MEASURE, want: WANT, concurrency: CONCURRENCY,
       screenTimeoutMs: 1800, timeoutMs: 6000, samples: 3, require: 2, minMs: 2, gapMs: 300,
-      smart: pref === "smart", toleranceMs: 60, maxCountries: 6,
+      smart: pref === "smart", toleranceMs: 60, maxCountries: 6, allowPlain: !SECURE,
       onProgress: (count, total, n, good, p) => {
         if (p !== phase) {
           phase = p;
@@ -1414,18 +1586,25 @@ const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEE
 
     NODES = out.working;
     if (!NODES.length) {
-      const why = !out.answered
-        ? `Sent ${out.screened} handshakes from here and nothing answered at all, which usually means your network or ISP blocks these ports.`
-        : `Tested ${out.screened} nodes from here; ${out.answered} answered the first handshake but none answered twice out of three, so they are too unreliable to list.`;
-      done(`${why} Nothing is shown, because nothing was proven. Press again, or choose Smart select or a nearer country in Preferences.`, "alert", btn);
+      const reason = !out.answered
+        ? `Dialed ${out.screened} nodes from here and none answered a handshake at all. That is your network or ISP refusing these ports, or the CDN in front of them rejecting a request without the Host header - a browser cannot add one.`
+        : `Dialed ${out.screened} nodes; ${out.answered} answered but none came back a second time, so they are too unreliable to hand you.`;
+      const unreach = (out.skipTotal ? ` ${out.skipTotal} of the ${out.skipTotal + out.screened} nodes found for this choice cannot be dialed by a browser at all${SECURE ? ", including plain ones this https page is not allowed to open" : ""}.` : "");
+      const afterDiag = `${out.screened} screened · ${out.answered} answered · ${out.refused || 0} refused · ${out.timedOut || 0} silent · ${out.patient || 0} retried slowly${out.skipTotal ? ` · ${out.skipTotal} not dialable` : ""}`;
+      meter(afterDiag);
+      done(`${reason}${unreach} Nothing is shown, because nothing was proven. Press again, or choose Smart select or a nearer country in Preferences.${SECURE ? " For the unencrypted ones, save this file and open it from your device instead of over https." : ""}`, "alert", btn);
+      meter(afterDiag);
       return;
     }
     render();
     const secs = ((Date.now() - t0) / 1000).toFixed(0);
     const near = out.picked && out.picked.length
       ? `Nearest from your line: ${out.picked.map((g) => Core.countryName(g) || g).join(", ")}. ` : "";
+    const cant = out.skipTotal ? ` ${out.skipTotal} more node${out.skipTotal === 1 ? "" : "s"} in these files cannot be tested by any browser (they need a Host header, a self-signed certificate or a transport a page cannot speak) - your VPN app can still use those.` : "";
+    const relaxedNote = out.relaxed ? ` So few answered that one handshake was enough to list a node, and each row says how many times it answered.` : "";
     say(`${near}${NODES.length} working configuration${NODES.length === 1 ? "" : "s"}, listed fastest first. Focus is on the list: arrow keys to browse, Enter to copy.` +
-        (res.failed.length ? ` ${res.failed.length} of ${attempted} sources did not answer, so a second press may find more.` : ``), null);
+        (res.failed.length ? ` ${res.failed.length} of ${attempted} sources did not answer, so a second press may find more.` : ``) +
+        relaxedNote + cant, null);
     meter(`${out.screened} screened · ${out.answered} answered · ${out.measured} confirmed · ${NODES.length} working · ${secs}s`);
     done0(btn);
   }
