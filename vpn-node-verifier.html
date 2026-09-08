@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
-<!-- built 2026-09-08 06:41 :: single-file, no external assets -->
+<!-- built 2026-09-08 06:44 :: single-file, no external assets -->
 <title>Working VPN configurations</title>
 <style>
   :root {
@@ -87,7 +87,7 @@
   <p class="meter" id="meter" aria-hidden="true"></p>
 
   <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
-    <p class="hint" id="go-hint">One button. It reads the public node sources - or only the country files you picked in Preferences, if you picked one - handshakes each node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
+    <p class="hint" id="go-hint">One button. It reads the public node sources, dials only what a browser is actually able to reach - and only the country you picked in Preferences, if you picked one - handshakes each node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
     <button id="btnGo" type="button" aria-describedby="go-desc go-pref">Get me configurations</button>
     <p class="hint small" id="go-pref"></p>
     <p id="go-desc" class="visually-hidden">Tests nodes with about 128 connections at once, the way the v2rayNG app does it, and stops early once it has enough working ones.</p>
@@ -99,7 +99,7 @@
 
   <div role="tabpanel" id="panel-prefs" aria-labelledby="tab-prefs" hidden>
     <label class="field" id="country-label" for="country">Country to get configurations from</label>
-    <p class="hint" id="country-desc">All countries lists everything the sources publish. Smart select screens a spread of them from your own line and keeps the countries that answer closest to you. A named country fetches that country&rsquo;s own files from every source that publishes one, which is much quicker than scanning everything.</p>
+    <p class="hint" id="country-desc">All countries lists everything the sources publish. Smart select screens a spread of them from your own line and keeps the countries that answer closest to you. A named country still reads every source, but dials only the nodes that belong to it (and any that name no country), which is what makes the scan fast; it also keeps the list honest about where each node is.</p>
     <select id="country" aria-describedby="country-desc country-state"></select>
     <p class="hint" id="country-state"></p>
     <p class="hint small" id="country-note">Saved on this device only, and used the next time you press the button.</p>
@@ -1352,21 +1352,21 @@ const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEE
     const code = PREF.country;
     el.textContent = code === "all" ? `Right now: every country the ${Core.FEEDS.length} sources publish, which is the widest search and takes the longest.`
       : code === "smart" ? "Right now: Smart select - it measures which countries answer closest to you and scans those."
-      : `Right now: ${countryNameOf(code)} only${Core.countryFeeds([code]).length ? ` (${Core.countryFeeds([code]).length} file${Core.countryFeeds([code]).length === 1 ? "" : "s"} read directly)` : ""} - change it in Preferences.`;
+      : `Right now: ${countryNameOf(code)} only - everything is read, but only ${countryNameOf(code)} is dialled. Change it in Preferences.`;
   }
 
   function describeChoice() {
     const el = $("#country-state");
     const code = PREF.country;
     if (code === "all") {
-      el.textContent = `Reading all ${Core.FEEDS.length} sources, which include the country files the big publishers keep for Turkey and Germany, then listing every node that answers from here - the broadest net, and the slowest.`;
+      el.textContent = `Reading all ${Core.FEEDS.length} sources and dialling every node a browser can reach, from any country - the broadest net, and the slowest.`;
     } else if (code === "smart") {
-      el.textContent = "Screens up to " + POOL_ALL + " nodes across every country at once, works out which countries answer closest to your line, then measures only those. Usually the best balance.";
+      el.textContent = `Dials up to ${POOL_ALL} reachable nodes across every country, works out which countries answer closest to your own line, then measures only those. Usually the best balance, and the only choice that adapts to where you are.`;
     } else {
       const c = Core.COUNTRIES.filter((x) => x.code === code)[0];
       const n = Core.countryFeeds([code]).length;
       el.textContent = c
-        ? `${c.name}: ${n} ${n === 1 ? "file" : "files"} fetched directly, so only that country is scanned. A second pass over the big sources is added if the country file has too few testable nodes.`
+        ? `${c.name}: all sources are read, but only nodes that belong to ${c.name} (or name no country) are dialled. That is what makes it quick - ${n} ${n === 1 ? "file" : "files"} of this country's own are read as well.`
         : `No country file for ${code} today, so all sources are read and filtered to ${code}.`;
     }
   }
