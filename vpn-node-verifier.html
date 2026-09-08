@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
-<!-- built 2026-09-08 05:18 :: single-file, no external assets -->
+<!-- built 2026-09-08 05:54 :: single-file, no external assets -->
 <title>Working VPN configurations</title>
 <style>
   :root {
@@ -31,6 +31,15 @@
   button:active { transform: translateY(1px); }
   button[disabled] { opacity: .65; cursor: progress; }
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 10px; }
+  .tabs { display: flex; gap: 6px; margin: 0 0 4px; border-bottom: 1px solid var(--line); }
+  .tabs [role="tab"] { font: 600 .9375rem/1 system-ui, sans-serif; color: var(--dim); background: none;
+    border: 0; border-bottom: 3px solid transparent; border-radius: 9px 9px 0 0; padding: 14px 16px;
+    min-height: 44px; cursor: pointer; }
+  .tabs [role="tab"][aria-selected="true"] { color: var(--fg); border-bottom-color: var(--good); }
+  .field { display: block; font-weight: 600; margin: 18px 0 6px; }
+  select { width: 100%; max-width: 26rem; min-height: 52px; font: 500 1rem/1.2 system-ui, sans-serif;
+    color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .hint.small { font-size: .8125rem; }
   .status { margin: 16px 0 0; font-size: .9375rem; color: var(--dim); min-height: 1.5em; }
   .alert { margin: 10px 0 0; font-size: .9375rem; font-weight: 600; color: #ff7b72; }
   .alert:empty { margin: 0; }
@@ -64,16 +73,37 @@
 <body>
 <main>
   <h1 id="title">Working VPN configurations</h1>
-  <p class="hint" id="go-hint">One button. It reads seventeen public node sources — the Türkiye and Germany files first, then the sources that test what they publish, handshakes each node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
-  <button id="btnGo" type="button" aria-describedby="go-desc">Get me configurations</button>
-  <p id="go-desc" class="visually-hidden">Tests every published node using this device's internet connection, then lists only the ones that answer.</p>
+
+  <div role="tablist" aria-label="Sections" class="tabs">
+    <button role="tab" type="button" id="tab-home" aria-selected="true" aria-controls="panel-home" tabindex="0">Home</button>
+    <button role="tab" type="button" id="tab-prefs" aria-selected="false" aria-controls="panel-prefs" tabindex="-1">Preferences</button>
+  </div>
+
+  <!-- The live regions sit outside both panels on purpose: a message inside a
+       hidden panel is never announced, and progress has to be readable from
+       whichever tab the user happens to be on. -->
   <p class="status" id="status" role="status" aria-live="polite" aria-atomic="true">Not run yet.</p>
   <p class="alert" id="alert" role="alert" aria-atomic="true"></p>
   <p class="meter" id="meter" aria-hidden="true"></p>
 
-  <h2 id="list-label" class="visually-hidden">Working configurations, sorted by ping</h2>
-  <p id="list-help" class="visually-hidden">Use the up and down arrow keys to move between configurations. Press Enter to copy the selected configuration. Each row states the ping in milliseconds, then the country, the node name and address, and whether the traffic to it is encrypted.</p>
-  <ul role="listbox" id="list" tabindex="0" aria-labelledby="list-label" aria-describedby="list-help" hidden></ul>
+  <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
+    <p class="hint" id="go-hint">One button. It reads the public node sources - or only the country files you picked in Preferences, if you picked one - handshakes each node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
+    <button id="btnGo" type="button" aria-describedby="go-desc go-pref">Get me configurations</button>
+    <p class="hint small" id="go-pref"></p>
+    <p id="go-desc" class="visually-hidden">Tests nodes with about 128 connections at once, the way the v2rayNG app does it, and stops early once it has enough working ones.</p>
+
+    <h2 id="list-label" class="visually-hidden">Working configurations, sorted by ping</h2>
+    <p id="list-help" class="visually-hidden">Use the up and down arrow keys to move between configurations. Press Enter to copy the selected configuration. Each row states the ping in milliseconds, then the country, the node name and address, and whether the traffic to it is encrypted.</p>
+    <ul role="listbox" id="list" tabindex="0" aria-labelledby="list-label" aria-describedby="list-help" hidden></ul>
+  </div>
+
+  <div role="tabpanel" id="panel-prefs" aria-labelledby="tab-prefs" hidden>
+    <label class="field" id="country-label" for="country">Country to get configurations from</label>
+    <p class="hint" id="country-desc">All countries lists everything the sources publish. Smart select screens a spread of them from your own line and keeps the countries that answer closest to you. A named country fetches that country&rsquo;s own files from every source that publishes one, which is much quicker than scanning everything.</p>
+    <select id="country" aria-describedby="country-desc country-state"></select>
+    <p class="hint" id="country-state"></p>
+    <p class="hint small" id="country-note">Saved on this device only, and used the next time you press the button.</p>
+  </div>
 </main>
 
 <noscript><p style="padding:16px">This page needs JavaScript: it tests the nodes from your own connection, which a server cannot do for you.</p></noscript>
@@ -143,6 +173,138 @@ const FEEDS = [
   { id: "barabama",   label: "Barabama · Cloudflare-worker nodes", maxBytes: 120000,
     url: "https://raw.githubusercontent.com/Barabama/FreeNodes/feat%2Fai-crawler-v2/nodes/cfmem.txt" },
 ];
+
+/*COUNTRIES-START*/
+/* Every country a shipped source publishes its own file for, with that file's URL.
+ * Generated by tools/gen-countries.js from the live repository trees - the Preferences
+ * list can therefore never offer a country the page cannot actually fetch. */
+const COUNTRIES = [
+  { code: "AL", name: "Albania", files: ["soli:Albania.txt"] },
+  { code: "AR", name: "Argentina", files: ["soli:Argentina.txt", "rad:Argentina.txt", "au:AR/v2ray-base64-0001.txt"] },
+  { code: "AM", name: "Armenia", files: ["soli:Armenia.txt", "rad:Armenia.txt", "au:AM/v2ray-base64-0001.txt"] },
+  { code: "AU", name: "Australia", files: ["soli:Australia.txt", "rad:Australia.txt", "au:AU/v2ray-base64-0001.txt"] },
+  { code: "AT", name: "Austria", files: ["soli:Austria.txt", "rad:Austria.txt", "au:AT/v2ray-base64-0001.txt"] },
+  { code: "AZ", name: "Azerbaijan", files: ["soli:Azerbaijan.txt"] },
+  { code: "BH", name: "Bahrain", files: ["soli:Bahrain.txt"] },
+  { code: "BD", name: "Bangladesh", files: ["au:BD/v2ray-base64-0001.txt"] },
+  { code: "BY", name: "Belarus", files: ["soli:Belarus.txt"] },
+  { code: "BE", name: "Belgium", files: ["soli:Belgium.txt"] },
+  { code: "BZ", name: "Belize", files: ["soli:Belize.txt"] },
+  { code: "BA", name: "Bosnia and Herzegovina", files: ["soli:Bosnia_And_Herzegovina.txt", "au:BA/v2ray-base64-0001.txt"] },
+  { code: "BR", name: "Brazil", files: ["soli:Brazil.txt", "au:BR/v2ray-base64-0001.txt"] },
+  { code: "BG", name: "Bulgaria", files: ["soli:Bulgaria.txt", "rad:Bulgaria.txt", "au:BG/v2ray-base64-0001.txt"] },
+  { code: "KH", name: "Cambodia", files: ["au:KH/v2ray-base64-0001.txt"] },
+  { code: "CA", name: "Canada", files: ["soli:Canada.txt", "rad:Canada.txt", "au:CA/v2ray-base64-0001.txt"] },
+  { code: "CL", name: "Chile", files: ["soli:Chile.txt"] },
+  { code: "CN", name: "China", files: ["soli:China.txt", "au:CN/v2ray-base64-0001.txt"] },
+  { code: "CO", name: "Colombia", files: ["au:CO/v2ray-base64-0001.txt"] },
+  { code: "CR", name: "Costa Rica", files: ["soli:Costa_Rica.txt"] },
+  { code: "HR", name: "Croatia", files: ["soli:Croatia.txt"] },
+  { code: "CY", name: "Cyprus", files: ["soli:Cyprus.txt", "au:CY/v2ray-base64-0001.txt"] },
+  { code: "CZ", name: "Czechia", files: ["soli:Czechia.txt", "rad:Czechia.txt", "au:CZ/v2ray-base64-0001.txt"] },
+  { code: "DK", name: "Denmark", files: ["soli:Denmark.txt", "au:DK/v2ray-base64-0001.txt"] },
+  { code: "EC", name: "Ecuador", files: ["au:EC/v2ray-base64-0001.txt"] },
+  { code: "EG", name: "Egypt", files: ["soli:Egypt.txt", "rad:Egypt.txt", "au:EG/v2ray-base64-0001.txt"] },
+  { code: "EE", name: "Estonia", files: ["soli:Estonia.txt", "rad:Estonia.txt", "au:EE/v2ray-base64-0001.txt"] },
+  { code: "FI", name: "Finland", files: ["soli:Finland.txt", "rad:Finland.txt", "au:FI/v2ray-base64-0001.txt"] },
+  { code: "FR", name: "France", files: ["soli:France.txt", "rad:France.txt", "au:FR/v2ray-base64-0001.txt"] },
+  { code: "GE", name: "Georgia", files: ["soli:Georgia.txt", "au:GE/v2ray-base64-0001.txt"] },
+  { code: "DE", name: "Germany", files: ["soli:Germany.txt", "rad:Germany.txt", "au:DE/v2ray-base64-0001.txt"] },
+  { code: "GH", name: "Ghana", files: ["au:GH/v2ray-base64-0001.txt"] },
+  { code: "GR", name: "Greece", files: ["soli:Greece.txt", "rad:Greece.txt", "au:GR/v2ray-base64-0001.txt"] },
+  { code: "GT", name: "Guatemala", files: ["rad:Guatemala.txt"] },
+  { code: "HN", name: "Honduras", files: ["au:HN/v2ray-base64-0001.txt"] },
+  { code: "HK", name: "Hong Kong", files: ["soli:Hong_Kong.txt", "rad:Hong_Kong.txt", "au:HK/v2ray-base64-0001.txt"] },
+  { code: "HU", name: "Hungary", files: ["soli:Hungary.txt", "rad:Hungary.txt", "au:HU/v2ray-base64-0001.txt"] },
+  { code: "IS", name: "Iceland", files: ["soli:Iceland.txt", "au:IS/v2ray-base64-0001.txt"] },
+  { code: "IN", name: "India", files: ["soli:India.txt", "rad:India.txt", "au:IN/v2ray-base64-0001.txt"] },
+  { code: "ID", name: "Indonesia", files: ["soli:Indonesia.txt", "au:ID/v2ray-base64-0001.txt"] },
+  { code: "IR", name: "Iran", files: ["soli:Iran.txt"] },
+  { code: "IQ", name: "Iraq", files: ["soli:Iraq.txt"] },
+  { code: "IE", name: "Ireland", files: ["soli:Ireland.txt", "au:IE/v2ray-base64-0001.txt"] },
+  { code: "IL", name: "Israel", files: ["soli:Israel.txt", "au:IL/v2ray-base64-0001.txt"] },
+  { code: "IT", name: "Italy", files: ["soli:Italy.txt", "rad:Italy.txt", "au:IT/v2ray-base64-0001.txt"] },
+  { code: "JP", name: "Japan", files: ["soli:Japan.txt", "rad:Japan.txt", "au:JP/v2ray-base64-0001.txt"] },
+  { code: "JE", name: "Jersey", files: ["rad:Jersey.txt"] },
+  { code: "KZ", name: "Kazakhstan", files: ["soli:Kazakhstan.txt", "rad:Kazakhstan.txt", "au:KZ/v2ray-base64-0001.txt"] },
+  { code: "LV", name: "Latvia", files: ["soli:Latvia.txt", "rad:Latvia.txt", "au:LV/v2ray-base64-0001.txt"] },
+  { code: "LI", name: "Liechtenstein", files: ["soli:Liechtenstein.txt"] },
+  { code: "LT", name: "Lithuania", files: ["soli:Lithuania.txt", "rad:Lithuania.txt", "au:LT/v2ray-base64-0001.txt"] },
+  { code: "LU", name: "Luxembourg", files: ["soli:Luxembourg.txt"] },
+  { code: "MO", name: "Macao", files: ["au:MO/v2ray-base64-0001.txt"] },
+  { code: "MY", name: "Malaysia", files: ["soli:Malaysia.txt", "rad:Malaysia.txt", "au:MY/v2ray-base64-0001.txt"] },
+  { code: "MV", name: "Maldives", files: ["soli:Maldives.txt"] },
+  { code: "MU", name: "Mauritius", files: ["soli:Mauritius.txt"] },
+  { code: "MX", name: "Mexico", files: ["soli:Mexico.txt", "au:MX/v2ray-base64-0001.txt"] },
+  { code: "MD", name: "Moldova", files: ["soli:Moldova.txt", "rad:Moldova.txt", "au:MD/v2ray-base64-0001.txt"] },
+  { code: "ME", name: "Montenegro", files: ["soli:Montenegro.txt"] },
+  { code: "NZ", name: "New Zealand", files: ["soli:New_Zealand.txt", "au:NZ/v2ray-base64-0001.txt"] },
+  { code: "NG", name: "Nigeria", files: ["au:NG/v2ray-base64-0001.txt"] },
+  { code: "MK", name: "North Macedonia", files: ["soli:North_Macedonia.txt", "au:MK/v2ray-base64-0001.txt"] },
+  { code: "NO", name: "Norway", files: ["soli:Norway.txt", "rad:Norway.txt", "au:NO/v2ray-base64-0001.txt"] },
+  { code: "PK", name: "Pakistan", files: ["soli:Pakistan.txt"] },
+  { code: "PA", name: "Panama", files: ["au:PA/v2ray-base64-0001.txt"] },
+  { code: "PE", name: "Peru", files: ["soli:Peru.txt"] },
+  { code: "PH", name: "Philippines", files: ["soli:Philippines.txt", "rad:Philippines.txt", "au:PH/v2ray-base64-0001.txt"] },
+  { code: "PL", name: "Poland", files: ["soli:Poland.txt", "rad:Poland.txt", "au:PL/v2ray-base64-0001.txt"] },
+  { code: "PT", name: "Portugal", files: ["soli:Portugal.txt"] },
+  { code: "RE", name: "Réunion", files: ["soli:R%C3%A9union.txt"] },
+  { code: "RO", name: "Romania", files: ["soli:Romania.txt", "rad:Romania.txt", "au:RO/v2ray-base64-0001.txt"] },
+  { code: "RU", name: "Russia", files: ["soli:Russia.txt", "rad:Russia.txt", "au:RU/v2ray-base64-0001.txt"] },
+  { code: "SA", name: "Saudi Arabia", files: ["soli:Saudi_Arabia.txt"] },
+  { code: "RS", name: "Serbia", files: ["soli:Serbia.txt"] },
+  { code: "SC", name: "Seychelles", files: ["soli:Seychelles.txt", "rad:Seychelles.txt"] },
+  { code: "SG", name: "Singapore", files: ["soli:Singapore.txt", "rad:Singapore.txt", "au:SG/v2ray-base64-0001.txt"] },
+  { code: "SK", name: "Slovakia", files: ["soli:Slovakia.txt"] },
+  { code: "SI", name: "Slovenia", files: ["soli:Slovenia.txt"] },
+  { code: "ZA", name: "South Africa", files: ["soli:South_Africa.txt", "rad:South_Africa.txt", "au:ZA/v2ray-base64-0001.txt"] },
+  { code: "KR", name: "South Korea", files: ["soli:South_Korea.txt", "rad:South_Korea.txt", "au:KR/v2ray-base64-0001.txt"] },
+  { code: "ES", name: "Spain", files: ["soli:Spain.txt", "rad:Spain.txt", "au:ES/v2ray-base64-0001.txt"] },
+  { code: "SE", name: "Sweden", files: ["soli:Sweden.txt", "rad:Sweden.txt", "au:SE/v2ray-base64-0001.txt"] },
+  { code: "CH", name: "Switzerland", files: ["soli:Switzerland.txt", "au:CH/v2ray-base64-0001.txt"] },
+  { code: "TW", name: "Taiwan", files: ["soli:Taiwan.txt", "rad:Taiwan.txt", "au:TW/v2ray-base64-0001.txt"] },
+  { code: "TH", name: "Thailand", files: ["soli:Thailand.txt", "au:TH/v2ray-base64-0001.txt"] },
+  { code: "NL", name: "the Netherlands", files: ["soli:The_Netherlands.txt", "rad:The_Netherlands.txt", "au:NL/v2ray-base64-0001.txt"] },
+  { code: "AE", name: "the United Arab Emirates", files: ["soli:United_Arab_Emirates.txt", "rad:United_Arab_Emirates.txt", "au:AE/v2ray-base64-0001.txt"] },
+  { code: "GB", name: "the United Kingdom", files: ["soli:United_Kingdom.txt", "rad:United_Kingdom.txt", "au:GB/v2ray-base64-0001.txt"] },
+  { code: "US", name: "the United States", files: ["soli:United_States.txt", "rad:United_States.txt", "au:US/v2ray-base64-0001.txt"] },
+  { code: "TR", name: "Turkey", files: ["soli:T%C3%BCrkiye.txt", "rad:Turkey.txt", "au:TR/v2ray-base64-0001.txt"] },
+  { code: "UA", name: "Ukraine", files: ["soli:Ukraine.txt", "rad:Ukraine.txt", "au:UA/v2ray-base64-0001.txt"] },
+  { code: "UZ", name: "Uzbekistan", files: ["au:UZ/v2ray-base64-0001.txt"] },
+  { code: "VE", name: "Venezuela", files: ["soli:Venezuela.txt", "au:VE/v2ray-base64-0001.txt"] },
+  { code: "VN", name: "Vietnam", files: ["soli:Vietnam.txt", "au:VN/v2ray-base64-0001.txt"] },
+];
+/*COUNTRIES-END*/
+
+const COUNTRY_SITES = {
+  soli: "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Countries/",
+  rad: "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/Countries/",
+  au: "https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/country/"
+};
+/** Resolve one "site:path" country-file reference to a URL. */
+function countryFileUrl(ref) {
+  const at = ref.indexOf(":");
+  const base = COUNTRY_SITES[at < 0 ? "" : ref.slice(0, at)];
+  return base ? base + ref.slice(at + 1) : ref;
+}
+
+/** Per-country files published by the shipped sources, for one or more codes. */
+function countryFeeds(codes) {
+  const want = Array.isArray(codes) && codes.length ? codes : null;
+  const out = [];
+  for (const c of COUNTRIES) {
+    if (want && want.indexOf(c.code) === -1) continue;
+    for (const ref of c.files) {
+      const url = countryFileUrl(ref);
+      const who = ref.indexOf("au:") === 0 ? "au" : ref.indexOf("soli:") === 0 ? "soli" : "rad";
+      out.push({
+        id: "c" + c.code + "_" + who, label: c.name + " · country file", geo: c.code,
+        trust: who === "au" || who === "rad" ? "verified" : "", url, maxBytes: 500000
+      });
+    }
+  }
+  return out;
+}
 
 /* ----------------------------------------------------------------- geo ----- */
 /* Where a node sits decides whether it feels fast from Iran, so the location is
@@ -668,7 +830,9 @@ async function probeNode(n, opts = {}) {
 
 /** Pool with progress callback. Mutates node.verdict. */
 async function probeAll(nodes, opts = {}) {
-  const concurrency = Math.max(1, Math.min(opts.concurrency || 6, 12));
+  /* the same ceiling as the sweep: a worker pool capped at a dozen is how this tool
+     took five minutes over 800 nodes once, so nothing here may clamp below 64 */
+  const concurrency = Math.max(1, Math.min(opts.concurrency || 6, 160));
   const limit = Math.min(nodes.length, opts.max || nodes.length);
   const queue = nodes.slice(0, limit).map((n, i) => ({ n, i }));
   let done = 0;
@@ -782,72 +946,128 @@ function isUsablePing(rttMs, opts = {}) {
          rttMs >= minMs && !PING_JUNK.has(rttMs) && rttMs <= (opts.maxMs || 3000);
 }
 
-/** Probe a node `samples` times; all must succeed. Returns {ok, pingMs, detail}. */
+/**
+ * Measure a node over up to `samples` handshakes and accept it when `require`
+ * of them answer (default 2 of 3).
+ *
+ * The old rule - every sample must succeed - is what turned a whole list into
+ * "nothing verified": free nodes share one small VPS with hundreds of users, so
+ * one dropped handshake out of three is normal, and re-connecting four times in
+ * half a second also trips per-IP connection limits. Now the screening
+ * handshake counts as the first sample, the gaps are longer and jittered, a
+ * timeout gets one retry, and a node that answers 2 times out of 3 is listed.
+ * Junk pings (0/1/-1 ms) and a median outside the band are still refused.
+ */
 async function pingNode(n, opts = {}) {
   const samples = Math.max(1, opts.samples || 3);
-  const timeoutMs = opts.timeoutMs || 7000;
-  const gapMs = opts.gapMs === undefined ? 120 : opts.gapMs;
-  const one = async () => {
-    const v = await probeNode(n, { timeoutMs });
-    return v;
-  };
-  const rtts = [];
-  let last = null;
-  for (let i = 0; i < samples; i++) {
-    const v = await one();
-    last = v;
-    if (v.state !== "verified" || !isFinite(v.rttMs || NaN)) {
-      return { ok: false, pingMs: null, detail: v.detail || v.state || "unreachable" };
+  const require = opts.require === undefined ? Math.max(1, Math.min(samples, Math.ceil(samples * 0.67))) : opts.require;
+  const timeoutMs = opts.timeoutMs || 6000;
+  const gapMs = opts.gapMs === undefined ? 320 : opts.gapMs;
+  const rtts = Array.isArray(opts.initial) ? opts.initial.slice() : [];
+  let failures = 0, attempts = rtts.length, detail = "";
+
+  while (attempts < samples && rtts.length + (samples - attempts) >= require) {
+    if (attempts > 0 && gapMs) {
+      // jitter, so a node does not see threeidentical back-to-back reconnects
+      await new Promise((r) => setTimeout(r, gapMs + Math.floor(Math.random() * gapMs)));
     }
-    rtts.push(v.rttMs);
-    if (i < samples - 1 && gapMs) await new Promise((r) => setTimeout(r, gapMs));
+    attempts++;
+    let v = null;
+    try { v = await probeNode(n, { timeoutMs }); } catch (e) { v = { state: "error", detail: String((e && e.message) || e) }; }
+    if (v && v.state === "verified" && isFinite(v.rttMs || NaN)) rtts.push(v.rttMs);
+    else {
+      failures++;
+      detail = (v && (v.detail || v.state)) || "no answer";
+      if (detail.indexOf("timeout") !== -1 && attempts < samples && rtts.length < require) attempts--;  // one retry for a slow box
+    }
+    if (rtts.length >= require) break;
+  }
+
+  if (rtts.length < require) {
+    return { ok: false, pingMs: rtts.length ? median(rtts) : null, detail: detail || "did not answer", answered: rtts.length, attempts };
   }
   const pingMs = median(rtts);
   if (!isUsablePing(pingMs, opts)) {
-    return { ok: false, pingMs, detail: `ping ${pingMs}ms is not a real measurement (junk value)` };
+    return { ok: false, pingMs, detail: `ping ${pingMs}ms is not a real measurement (junk value)`, answered: rtts.length, attempts };
   }
-  return { ok: true, pingMs, samples: rtts, detail: `answered ${samples}/${samples} handshakes` };
+  return { ok: true, pingMs, samples: rtts, answered: rtts.length, attempts,
+           detail: `answered ${rtts.length}/${attempts || samples} handshakes` + (failures ? ` (${failures} timed out or refused)` : "") };
 }
 
 /** Keep only nodes that genuinely answer, each with a usable ping. Sorted by ping. */
 async function findWorking(nodes, opts = {}) {
   const onProgress = opts.onProgress || function(){};
-  const concurrency = Math.max(1, Math.min(opts.concurrency || 6, 10));
-  const budget = Math.min(nodes.length, opts.max || 220);
+  const concurrency = Math.max(1, Math.min(opts.concurrency || 96, 160));
+  const budget = Math.min(nodes.length, opts.max || nodes.length);
+  const want = opts.want || 0;
   const queue = nodes.slice(0, budget).map((n) => n);
   const good = [];
   let done = 0;
   const worker = async () => {
-    while (queue.length) {
+    while (queue.length && !(want && good.length >= want)) {
       const n = queue.shift();
       let r;
-      try { r = await pingNode(n, opts); }
+      try { r = await pingNode(n, Object.assign({}, opts, { initial: n._seed })); }
       catch (e) { r = { ok: false, pingMs: null, detail: String((e && e.message) || e) }; }
-      n.pingMs = r.pingMs; n.verdict = r.ok ? { state: "verified", rttMs: r.pingMs, detail: r.detail }
-                                            : { state: r.ok ? "verified" : "failed", rttMs: r.pingMs, detail: r.detail };
+      n.pingMs = r.pingMs;
+      n.stability = r.answered && r.attempts ? `${r.answered}/${r.attempts}` : "";
+      n.verdict = { state: r.ok ? "verified" : "failed", rttMs: r.pingMs, detail: r.detail };
       if (r.ok) good.push(n);
       onProgress(++done, budget, n, good.length);
     }
   };
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  await Promise.all(Array.from({ length: concurrency }, worker));
   good.sort((a, b) => a.pingMs - b.pingMs);
   return { working: good, scanned: done };
 }
 
+/* Per-country medians from what just answered. This is how "smart select" finds
+ * where you are without asking a third-party service anything: the nodes answer
+ * at different speeds from your line, and the ones nearest you answer fastest. */
+function rankCountries(nodes, opts = {}) {
+  const minCount = opts.minCount || 2;
+  const by = new Map();
+  for (const n of nodes) {
+    if (!n.geo) continue;
+    const rtt = typeof n.pingMs === "number" ? n.pingMs : n.screenMs;
+    if (!isFinite(rtt) || rtt === null) continue;
+    if (!by.has(n.geo)) by.set(n.geo, []);
+    by.get(n.geo).push(rtt);
+  }
+  return [...by.entries()]
+    .filter(([, v]) => v.length >= minCount)
+    .map(([geo, v]) => ({ geo, name: countryName(geo) || geo, count: v.length, medianMs: median(v) }))
+    .sort((a, b) => a.medianMs - b.medianMs);
+}
+
+/** Narrow a candidate list to the countries that measured closest from here. */
+function smartPick(nodes, opts = {}) {
+  const tolerance = opts.toleranceMs === undefined ? 60 : opts.toleranceMs;
+  const max = opts.maxCountries || 6;
+  const ranks = rankCountries(nodes, opts);
+  if (!ranks.length) return { nodes, ranks: [], picked: [] };
+  const best = ranks[0].medianMs;
+  const picked = ranks.filter((r) => r.medianMs <= best + tolerance).slice(0, max).map((r) => r.geo);
+  const keep = nodes.filter((n) => !n.geo || picked.indexOf(n.geo) !== -1);
+  return { nodes: keep.length ? keep : nodes, ranks, picked };
+}
+
 /* Two-stage sweep, because a browser test costs a round trip per node and the
  * pool is now in the thousands:
- *   stage 1  one handshake each over the whole screened pool, at high
- *            concurrency, to find who answers at all (dead hosts fail fast);
- *   stage 2  the three-sample ping only on the fastest responders, so the
- *            measurement budget goes to nodes that could actually be listed.
- * Anything that does not answer every sample, or whose median ping is a junk
- * value, is dropped - it never reaches the list. */
+ *   stage 1  ONE handshake each over the whole screened pool at high
+ *            concurrency, exactly like v2rayNG's delay test - it proves the
+ *            inbound answers and times it in the same go, so a dead node costs
+ *            one refused connection instead of three;
+ *   stage 2  the two extra samples (and the junk-ping rule) only on the
+ *            quickest responders, optionally narrowed to the countries that
+ *            measured nearest from this connection ("smart").
+ * A node that never answers, answers only once, or pings 0/1/-1 ms is dropped. */
 async function findBest(nodes, opts = {}) {
   const onProgress = opts.onProgress || function(){};
-  const pool = nodes.slice(0, Math.max(20, opts.pool || 800));
-  const screenMs = opts.screenTimeoutMs || 2500;
-  const concurrency = Math.max(1, Math.min(opts.concurrency || 24, 48));
-  const failFastAfter = opts.failFastAfter === undefined ? 200 : opts.failFastAfter;
+  const concurrency = Math.max(1, Math.min(opts.concurrency || 128, 160));
+  const pool = nodes.slice(0, Math.max(20, opts.pool || 1200));
+  const screenMs = opts.screenTimeoutMs || 1800;
+  const failFastAfter = opts.failFastAfter === undefined ? 250 : opts.failFastAfter;
   const queue = pool.slice();
   const answered = [];
   let screened = 0, aborted = false;
@@ -861,23 +1081,39 @@ async function findBest(nodes, opts = {}) {
       const rtt = v && v.state === "verified" ? v.rttMs : NaN;
       if (v && v.state === "verified" && isFinite(rtt)) { n.screenMs = rtt; answered.push(n); }
       onProgress(screened, pool.length, n, answered.length, "screen");
-      // A network that blocks these ports would otherwise burn every timeout.
+      // a network that blocks these ports would otherwise burn every timeout
       if (failFastAfter && screened >= failFastAfter && !answered.length) aborted = true;
     }
   };
   await Promise.all(Array.from({ length: concurrency }, screener));
+  if (!answered.length) {
+    return { working: [], screened, answered: 0, measured: 0, scanned: 0, pool: pool.length, abortedEarly: aborted, ranks: [], picked: [] };
+  }
 
   answered.sort((a, b) => (a.screenMs || 0) - (b.screenMs || 0));
-  const measure = Math.max(1, opts.measure || 180);
-  const cands = answered.slice(0, measure);
+  let list = answered;
+  let ranks = [], picked = [];
+  if (opts.smart) {
+    const sp = smartPick(answered, opts);
+    list = sp.nodes; ranks = sp.ranks; picked = sp.picked;
+    list.sort((a, b) => (a.screenMs || 0) - (b.screenMs || 0));
+  }
+  const measure = Math.max(1, opts.measure || 150);
+  const cands = list.slice(0, measure);
   let measured = 0;
+  // the screening handshake is handed over as the first sample, so a node that
+  // ends up listed has answered twice at minimum and three times at most
+  for (const n of cands) n._seed = [n.screenMs];
   const out = await findWorking(cands, {
-    concurrency: Math.min(concurrency, 12), max: measure, timeoutMs: opts.timeoutMs || 7000,
-    samples: opts.samples || 3, gapMs: opts.gapMs, minMs: opts.minMs, maxMs: opts.maxMs,
+    concurrency: Math.min(concurrency, 48), max: cands.length, want: opts.want || 0,
+    timeoutMs: opts.timeoutMs || 6000, samples: opts.samples || 3, require: opts.require,
+    gapMs: opts.gapMs, minMs: opts.minMs, maxMs: opts.maxMs,
     onProgress: (d, total, n, good) => { measured = d; onProgress(d, cands.length, n, good, "ping"); }
   });
+  out.working.forEach((n) => { delete n._seed; });
+  // pass the seed in through pingNode
   return { working: out.working, screened, answered: answered.length, measured: cands.length,
-           scanned: out.scanned, pool: pool.length, abortedEarly: aborted };
+           scanned: out.scanned, pool: pool.length, abortedEarly: aborted, ranks, picked };
 }
 
 /* one-line summary used by the UI */
@@ -888,32 +1124,124 @@ function describe(n) {
 
 /* export for node tests and for the browser bundle */
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { FEEDS, urlCandidates, extractLinks, parseLink, prepare, preScore, dedupeKey,
-    collect, mergeFeeds, geoOf, geoFromHost, geoScore, flagOf, countryName, GEO_TIERS, findBest, cleanRemark, AD_WORDS,
-    probeNode, probeAll, rank, wsProbe, httpProbe, exportLinks, exportSubscription, clashYaml,
-    describe, portBlocked, b64decode, b64encode, fetchText, buildVlessLink,
-    median, isUsablePing, pingNode, findWorking, fetchWithTimeout };
+  module.exports = { FEEDS, COUNTRIES, countryFeeds, urlCandidates, extractLinks, parseLink,
+    prepare, preScore, dedupeKey, collect, mergeFeeds, geoOf, geoFromHost, geoScore, flagOf,
+    countryName, GEO_TIERS, rankCountries, smartPick, findBest, COUNTRIES, COUNTRIES, COUNTRIES, findWorking, pingNode, probeNode,
+    probeAll, rank, wsProbe, httpProbe, exportLinks, exportSubscription, clashYaml, describe,
+    portBlocked, b64decode, b64encode, fetchText, fetchWithTimeout, buildVlessLink, median,
+    isUsablePing, cleanRemark, AD_WORDS, COUNTRY_SITES, countryFileUrl };
 }
 
 
-const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_ALIASES, GEO_NAMES, GEO_SCORE, GEO_TIERS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, cleanRemark, collect, countryName, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findBest, findWorking, flagOf, geoFromHost, geoOf, geoScore, httpProbe, isUsablePing, median, mergeFeeds, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, splitHostPort, urlCandidates, wsProbe };
+const Core = { AD_WORDS, BAD_MARKERS, COUNTRIES, COUNTRY_SITES, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_ALIASES, GEO_NAMES, GEO_SCORE, GEO_TIERS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, cleanRemark, collect, countryFeeds, countryFileUrl, countryName, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findBest, findWorking, flagOf, geoFromHost, geoOf, geoScore, httpProbe, isUsablePing, median, mergeFeeds, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, rankCountries, smartPick, splitHostPort, urlCandidates, wsProbe };
 
-/* app.js — one action: fetch every feed → verify through this device's own
- * internet → list the working ones, fastest first. Screen-reader-first: a real
- * listbox, arrow-key navigation, polite live-region stage announcements (never
- * per-node chatter), errors that interrupt, and copy on Enter. No other
- * controls exist on the page by design. */
+/* app.js — two tabs (Home, Preferences), one action: read the sources the
+ * preference allows → verify through this device's own internet → list the
+ * working ones, fastest first.
+ *
+ * Screen-reader model, deliberately boring and standard: ARIA tabs with
+ * arrow-key navigation, a real listbox for results, polite live regions that
+ * live OUTSIDE both panels (a message inside a hidden panel is never
+ * announced), errors in an interrupting role="alert", and copy on Enter. */
 (function () {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  let NODES = [], ALL = [], ACTIVE = -1, running = false, phase = "";
+  const PKEY = "vpnverif.prefs.v1";
+  let NODES = [], ACTIVE = -1, running = false, phase = "";
+  let PREF = { country: "all", tab: "home" };
 
-  /* How much of the pool to touch, per stage. Browsers cap sockets per host,
-   * not per destination, so screening many different nodes at once is fine. */
-  const POOL = 800;          // nodes given one handshake
-  const MEASURE = 200;       // of those, the quickest get the 3-sample ping
-  const CONCURRENCY = 24;
+  /* One handshake per node at ~128 in parallel is what makes this fast; the
+   * confirmations below are the only extra traffic. */
+  const CONCURRENCY = 128;
+  const POOL_ALL = 1200;
+  const POOL_COUNTRY = 700;
+  const MEASURE = 150;
+  const WANT = 60;
 
+  /* ------------------------------------------------------------ prefs ------ */
+  function loadPrefs() {
+    try {
+      const raw = localStorage.getItem(PKEY);
+      if (!raw) return;
+      const j = JSON.parse(raw) || {};
+      if (j.country === "all" || j.country === "smart" || /^[A-Z]{2}$/.test(String(j.country || ""))) {
+        if (j.country === "all" || j.country === "smart" || Core.COUNTRIES.some((c) => c.code === j.country)) PREF.country = j.country;
+      }
+      if (j.tab === "prefs" || j.tab === "home") PREF.tab = j.tab;
+    } catch (e) { /* private mode, or an older shape: defaults are fine */ }
+  }
+  function savePrefs() { try { localStorage.setItem(PKEY, JSON.stringify(PREF)); } catch (e) {} }
+  const countryNameOf = (code) => (code === "all" ? "All countries" : code === "smart" ? "Smart select"
+    : (Core.countryName(code) || code).replace(/^\w/, (c) => c.toUpperCase()));
+
+  function buildCountryOptions() {
+    const sel = $("#country");
+    sel.innerHTML = "";
+    const list = [["all", "All countries"], ["smart", "Smart select (pick the nearest countries by measuring)"]]
+      .concat(Core.COUNTRIES.map((c) => [c.code, c.name.replace(/^\w/, (x) => x.toUpperCase()) + ` (${c.files.length} direct ${c.files.length === 1 ? "source" : "sources"})`]));
+    for (const [value, label] of list) {
+      const opt = document.createElement("option");
+      opt.setAttribute("value", value);
+      opt.textContent = label;
+      sel.appendChild(opt);
+    }
+    sel.value = PREF.country;
+  }
+
+  /* Home shows what the button is about to do, so the preference is not hidden
+   * behind another tab: one line, updated whenever the choice changes. */
+  function syncHomeHint() {
+    const el = $("#go-pref");
+    if (!el) return;
+    const code = PREF.country;
+    el.textContent = code === "all" ? `Right now: every country the ${Core.FEEDS.length} sources publish, which is the widest search and takes the longest.`
+      : code === "smart" ? "Right now: Smart select - it measures which countries answer closest to you and scans those."
+      : `Right now: ${countryNameOf(code)} only${Core.countryFeeds([code]).length ? ` (${Core.countryFeeds([code]).length} file${Core.countryFeeds([code]).length === 1 ? "" : "s"} read directly)` : ""} - change it in Preferences.`;
+  }
+
+  function describeChoice() {
+    const el = $("#country-state");
+    const code = PREF.country;
+    if (code === "all") {
+      el.textContent = `Reading all ${Core.FEEDS.length} sources, which include the country files the big publishers keep for Turkey and Germany, then listing every node that answers from here - the broadest net, and the slowest.`;
+    } else if (code === "smart") {
+      el.textContent = "Screens up to " + POOL_ALL + " nodes across every country at once, works out which countries answer closest to your line, then measures only those. Usually the best balance.";
+    } else {
+      const c = Core.COUNTRIES.filter((x) => x.code === code)[0];
+      const n = Core.countryFeeds([code]).length;
+      el.textContent = c
+        ? `${c.name}: ${n} ${n === 1 ? "file" : "files"} fetched directly, so only that country is scanned. A second pass over the big sources is added if the country file has too few testable nodes.`
+        : `No country file for ${code} today, so all sources are read and filtered to ${code}.`;
+    }
+  }
+
+  /* ------------------------------------------------------ tab controller --- */
+  const TABS = ["home", "prefs"];
+  function activateTab(name, focus) {
+    if (TABS.indexOf(name) === -1) name = "home";
+    PREF.tab = name; savePrefs();
+    TABS.forEach((k) => {
+      const on = k === name;
+      const tab = $("#tab-" + k), panel = $("#panel-" + k);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+      tab.setAttribute("tabindex", on ? "0" : "-1");
+      panel.hidden = !on;
+    });
+    if (focus) $("#tab-" + name).focus();
+  }
+  function tabKeys(e) {
+    const i = Math.max(0, TABS.indexOf(PREF.tab));
+    let next = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % TABS.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i + TABS.length - 1) % TABS.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = TABS.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    activateTab(TABS[next], true);
+  }
+
+  /* ----------------------------------------------------- announcements ----- */
   /* Two live regions, because they do different jobs: progress and results are
    * polite (#status, so it never talks over the user), while a failure has to
    * interrupt (#alert with role="alert") or TalkBack leaves it queued behind
@@ -948,12 +1276,8 @@ const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_A
   }
 
   /* ------------------------------------------------------------- rendering -- */
-  /* The row on screen is dense with separators and monospace noise; a screen
-   * reader would read "· no-tls" out loud. Give the option a sentence instead,
-   * leading with the ping because that is what the user is comparing, and
-   * naming the country because that is what they are choosing between. */
   function whereOf(n) {
-    const name = Core.countryName(n.geo) || (n.geo ? n.geo : "");
+    const name = Core.countryName(n.geo) || (n.geo || "");
     if (!name) return "";
     return n.place ? name + " (" + n.place + ")" : name;
   }
@@ -966,6 +1290,7 @@ const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_A
     return `Ping ${n.pingMs} milliseconds.` + (where ? ` ${where}.` : "") +
            ` ${Core.cleanRemark(n)}.` +
            ` ${n.proto} at ${n.host}, port ${n.port}, over ${via}, ${enc}.` +
+           (n.stability && n.stability.indexOf("3/") !== 0 ? ` It answered ${n.stability} of the checks.` : "") +
            (n.verifiedBy ? " The source had already tested this node before publishing it." : "");
   }
 
@@ -1000,7 +1325,6 @@ const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_A
     ul.hidden = false;
     ACTIVE = 0;
     setActive(0, false);
-    say(`${NODES.length} working configuration${NODES.length === 1 ? "" : "s"}. Focus is on the list: arrow keys to browse, Enter to copy.`, null);
   }
 
   function setActive(i, focus) {
@@ -1014,74 +1338,95 @@ const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_A
   }
 
   /* ------------------------------------------------------------------ flow -- */
-  async function go() {
-    if (running) return;
-    running = true;
-    const btn = $("#btnGo");
-    btn.disabled = true; btn.setAttribute("aria-busy", "true");
-    $("#list").hidden = true; $("#list").innerHTML = "";
-    NODES = []; ALL = []; ACTIVE = -1;
-    const t0 = Date.now();
-
-    say(`Reading ${Core.FEEDS.length} node sources…`);
-    const results = await Promise.allSettled(Core.FEEDS.map((f) =>
-      Core.fetchText(f.url, { timeoutMs: 20000, maxBytes: f.maxBytes || 900000 })));
+  async function readAll(feeds) {
+    const results = await Promise.allSettled(feeds.map((f) =>
+      Core.fetchText(f.url, { timeoutMs: 20000, maxBytes: f.maxBytes || 500000 })));
     const lists = [], failed = [], truncated = [];
     results.forEach((r, i) => {
-      const meta = Core.FEEDS[i];
+      const meta = feeds[i];
       if (r.status === "fulfilled" && r.value && r.value.text) {
         const nodes = Core.collect(r.value.text, meta);
         if (nodes.length) lists.push(nodes); else failed.push(meta.id);
         if (r.value.truncated) truncated.push(meta.id);
       } else failed.push(meta.id);
     });
-    if (!lists.length) {
+    return { lists, failed, truncated };
+  }
+
+  async function go() {
+    if (running) return;
+    running = true;
+    const btn = $("#btnGo");
+    btn.disabled = true; btn.setAttribute("aria-busy", "true");
+    $("#list").hidden = true; $("#list").innerHTML = "";
+    NODES = []; ACTIVE = -1; phase = "";
+    const t0 = Date.now();
+    const pref = PREF.country;
+    const isCode = pref !== "all" && pref !== "smart";
+    let feeds = isCode ? Core.countryFeeds([pref]) : Core.FEEDS;
+    if (!feeds.length) feeds = Core.FEEDS;
+    let attempted = feeds.length;          // how many files this press asked for
+
+    say(isCode ? `Reading ${feeds.length} ${countryNameOf(pref)} ${feeds.length === 1 ? "source" : "sources"}…`
+               : `Reading ${feeds.length} node sources…`);
+    let res = await readAll(feeds);
+    if (!res.lists.length) {
       done("Could not reach any node source from this connection. Check that this browser can open raw.githubusercontent.com, then try again.", "alert", btn);
       return;
     }
+    let all = Core.mergeFeeds(res.lists);
+    let probeable = all.filter((n) => n.network === "ws" && !Core.portBlocked(n.port) && (!isCode || !n.geo || n.geo === pref));
 
-    ALL = Core.mergeFeeds(lists);
-    const probeable = ALL.filter((n) => n.network === "ws" && !Core.portBlocked(n.port));
-    const geoCount = ALL.filter((n) => n.geo).length;
-    meter(`${lists.length}/${Core.FEEDS.length} sources answered · ${ALL.length} unique configs · ` +
-          `${geoCount} with a known country · ${probeable.length} testable from a browser` +
-          (truncated.length ? ` · ${truncated.length} capped by size` : ""));
+    if (isCode && probeable.length < 8) {           // thin country file: widen once
+      say(`The ${countryNameOf(pref)} files had only ${probeable.length} browser-testable node${probeable.length === 1 ? "" : "s"}, so the big sources are being read too…`);
+      const extraFeeds = Core.FEEDS.filter((f) => !feeds.some((g) => g.url === f.url));
+      attempted += extraFeeds.length;
+      const extra = await readAll(extraFeeds);
+      if (extra.lists.length) {
+        res = { lists: res.lists.concat(extra.lists), failed: res.failed.concat(extra.failed), truncated: res.truncated.concat(extra.truncated) };
+        all = Core.mergeFeeds(res.lists);
+        probeable = all.filter((n) => n.network === "ws" && !Core.portBlocked(n.port) && (!n.geo || n.geo === pref));
+      }
+    }
+
+    const geoCount = all.filter((n) => n.geo).length;
+    meter(`${res.lists.length}/${attempted} sources answered · ${all.length} unique configs · ${geoCount} with a known country · ${probeable.length} testable from a browser`);
 
     if (!probeable.length) {
-      done(`Read ${ALL.length} configurations but none use a transport a browser can test, so nothing could be verified. Nothing is shown rather than guessing.`, "alert", btn);
+      done(`Read ${all.length} configurations but nothing usable for ${isCode ? countryNameOf(pref) : "these sources"} - either they do not use a transport a browser can test, or the country file is empty today. Nothing is shown rather than guessing.`, "alert", btn);
       return;
     }
 
-    const screened = Math.min(probeable.length, POOL);
-    say(`Screening ${screened} nodes through your own connection, ${CONCURRENCY} at a time…`);
+    const pool = Math.min(probeable.length, isCode ? POOL_COUNTRY : POOL_ALL);
+    say(`Screening ${pool} nodes through your own connection, ${CONCURRENCY} at a time…`);
     const out = await Core.findBest(probeable, {
-      pool: POOL, measure: MEASURE, concurrency: CONCURRENCY,
-      screenTimeoutMs: 2500, timeoutMs: 7000, samples: 3, minMs: 2,
+      pool, measure: MEASURE, want: WANT, concurrency: CONCURRENCY,
+      screenTimeoutMs: 1800, timeoutMs: 6000, samples: 3, require: 2, minMs: 2, gapMs: 300,
+      smart: pref === "smart", toleranceMs: 60, maxCountries: 6,
       onProgress: (count, total, n, good, p) => {
         if (p !== phase) {
           phase = p;
-          if (p === "ping") say(`Measuring the ping of the ${total} that answered — three handshakes each, a node has to answer every one.`);
+          if (p === "ping") say(`Measuring the ping of the ${total} that answered, two handshakes each - a node has to answer both.`);
         }
-        meter(p === "screen" ? `screening ${count}/${total} · ${good} answered`
-                              : `pinging ${count}/${total} · ${good} stable`);
+        meter(p === "screen" ? `screening ${count}/${total} · ${good} answered` : `confirming ${count}/${total} · ${good} stable`);
       }
     });
 
     NODES = out.working;
     if (!NODES.length) {
       const why = !out.answered
-        ? `Sent ${out.screened} handshakes from here and nothing answered at all — your network or ISP is most likely blocking these ports.`
-        : `Tested ${out.screened} nodes from here; ${out.answered} answered once but none answered three times in a row, which is how a flaky node behaves.`;
-      done(`${why} Nothing is shown, because nothing was proven.`, "alert", btn);
+        ? `Sent ${out.screened} handshakes from here and nothing answered at all, which usually means your network or ISP blocks these ports.`
+        : `Tested ${out.screened} nodes from here; ${out.answered} answered the first handshake but none answered twice out of three, so they are too unreliable to list.`;
+      done(`${why} Nothing is shown, because nothing was proven. Press again, or choose Smart select or a nearer country in Preferences.`, "alert", btn);
       return;
     }
     render();
     const secs = ((Date.now() - t0) / 1000).toFixed(0);
-    meter(`${out.screened} screened · ${out.answered} answered · ${out.measured} pinged · ${NODES.length} working · ${secs}s`);
-    if (failed.length) {
-      say(`${NODES.length} working configurations, listed fastest first. Focus is on the list: arrow keys to browse, Enter to copy. ` +
-          `${failed.length} of ${Core.FEEDS.length} sources did not answer, so a second press may find more.`, null);
-    }
+    const near = out.picked && out.picked.length
+      ? `Nearest from your line: ${out.picked.map((g) => Core.countryName(g) || g).join(", ")}. ` : "";
+    say(`${near}${NODES.length} working configuration${NODES.length === 1 ? "" : "s"}, listed fastest first. Focus is on the list: arrow keys to browse, Enter to copy.` +
+        (res.failed.length ? ` ${res.failed.length} of ${attempted} sources did not answer, so a second press may find more.` : ``), null);
+    meter(`${out.screened} screened · ${out.answered} answered · ${out.measured} confirmed · ${NODES.length} working · ${secs}s`);
     done0(btn);
   }
 
@@ -1090,7 +1435,24 @@ const Core = { AD_WORDS, BAD_MARKERS, DATACENTERS, FEEDS, FORBIDDEN_PORTS, GEO_A
 
   /* ---------------------------------------------------------------- wiring -- */
   function init() {
+    loadPrefs();
+    buildCountryOptions();
+    describeChoice();
+    syncHomeHint();
+    activateTab(PREF.tab);
+
     $("#btnGo").addEventListener("click", go);
+    $("#tab-home").addEventListener("click", () => activateTab("home"));
+    $("#tab-prefs").addEventListener("click", () => activateTab("prefs"));
+    $("#tab-home").addEventListener("keydown", tabKeys);
+    $("#tab-prefs").addEventListener("keydown", tabKeys);
+    $("#country").addEventListener("change", (e) => {
+      PREF.country = (e.target && e.target.value) || "all";
+      syncHomeHint();
+      savePrefs(); describeChoice();
+      say(`Preference saved: ${countryNameOf(PREF.country)}. Press Get me configurations to use it.`);
+    });
+
     const ul = $("#list");
     ul.addEventListener("keydown", (e) => {
       const items = ul.querySelectorAll('[role="option"]');
