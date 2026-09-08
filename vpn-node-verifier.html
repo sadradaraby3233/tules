@@ -3,225 +3,78 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<!-- built 2026-09-08 03:49 :: single-file, no external assets -->
-<title>VPN node verifier — free v2ray/Xray configs you can copy-paste</title>
+<meta name="color-scheme" content="dark light">
+<!-- built 2026-09-08 04:14 :: single-file, no external assets -->
+<title>Working VPN configurations</title>
 <style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117; --panel: #161b22; --line: #262d36; --fg: #e6edf3;
+    --dim: #9aa4b0; --good: #3fb950; --good-ink: #04260f; --accent: #1f6feb;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { color-scheme: light;
+      --bg: #ffffff; --panel: #f6f8fa; --line: #d0d7de; --fg: #1f2328;
+      --dim: #59636e; --good: #1a7f37; --good-ink: #ffffff; --accent: #0969da; }
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    background: #0d1117; color: #e6edf3; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    padding: 0 0 40vh; -webkit-text-size-adjust: 100%;
-  }
-  header { position: sticky; top: 0; z-index: 5; background: linear-gradient(#0d1117ee, #0d1117cc); backdrop-filter: blur(8px);
-           border-bottom: 1px solid #232a33; padding: 12px 14px 10px; }
-  h1 { margin: 0; font-size: 17px; letter-spacing: .2px; }
-  h1 span { color: #7ee787; }
-  .sub { margin: 3px 0 0; color: #8b949e; font-size: 12.5px; }
-  main { padding: 12px 14px; max-width: 780px; margin: 0 auto; }
-  .card { background: #161b22; border: 1px solid #232a33; border-radius: 12px; padding: 12px; margin: 0 0 12px; }
-  .card h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: #8b949e; }
-  label.feed, .opt { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; padding: 3px 0; }
-  .opt { align-items: center; flex-wrap: wrap; }
-  input[type=text], input[type=number], select, textarea {
-    background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; padding: 9px 10px;
-    font: inherit; width: 100%; -webkit-appearance: none; appearance: none;
-  }
-  textarea { min-height: 84px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
-  input[type=number] { width: 84px; }
-  input[type=checkbox] { width: 19px; height: 19px; margin-top: 1px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 20px 16px 60vh; }
+  h1 { font-size: 1.25rem; margin: 0 0 6px; }
+  .hint { color: var(--dim); font-size: .9375rem; margin: 0 0 18px; }
   button {
-    background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 9px; padding: 11px 13px;
-    font: 600 13.5px/1 system-ui, sans-serif; cursor: pointer; min-height: 42px;
+    font: 600 1.0625rem/1.2 system-ui, sans-serif; color: #fff; background: var(--good);
+    border: 0; border-radius: 12px; padding: 18px 22px; width: 100%; min-height: 56px; cursor: pointer;
   }
+  @media (prefers-color-scheme: light) { button { color: var(--good-ink); } }
   button:active { transform: translateY(1px); }
-  button.primary { background: #238636; border-color: #2ea043; color: #fff; }
-  button.blue { background: #1f6feb; border-color: #388bfd; color: #fff; }
-  button.mini { padding: 7px 10px; min-height: 36px; font-size: 12.5px; align-self: center; }
-  button.ok { background: #1f6feb !important; }
-  button:disabled { opacity: .5; }
-  .status { font-size: 12.5px; color: #8b949e; margin-top: 8px; word-break: break-word; }
-  .status.ok { color: #7ee787; } .status.err { color: #ff7b72; }
-  .prog { height: 6px; background: #21262d; border-radius: 99px; overflow: hidden; margin-top: 8px; }
-  .prog > div { height: 100%; width: 0; background: #2ea043; transition: width .18s; }
-  #progTxt { font-size: 12px; color: #8b949e; float: right; }
-  #list .row {
-    display: flex; gap: 9px; align-items: center; padding: 9px 10px; border-radius: 10px;
-    background: #0d1117; border: 1px solid #21262d; border-left: 4px solid #30363d; margin-bottom: 7px;
-  }
-  #list .row.g { border-left-color: #3fb950; background: #0f1a13; }
-  #list .row.b { border-left-color: #58a6ff; }
-  #list .row.y { border-left-color: #d29922; }
-  #list .row.r { border-left-color: #f85149; opacity: .72; }
-  #list .row.n { opacity: .8; }
-  .pick { display: flex; align-items: center; }
-  .main { flex: 1; min-width: 0; }
-  .top { display: flex; gap: 7px; align-items: baseline; flex-wrap: wrap; }
-  .name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-  .badge { font: 700 10.5px/1.6 system-ui; letter-spacing: .5px; padding: 2px 7px; border-radius: 99px;
-           background: #21262d; color: #c9d1d9; white-space: nowrap; }
-  .badge.g { background: #238636; color: #fff; } .badge.b { background: #1f6feb; color: #fff; }
-  .badge.y { background: #9e6a03; color: #fff; } .badge.r { background: #6e2b28; color: #ffdcd7; }
-  .rtt { font-variant-numeric: tabular-nums; color: #7ee787; font-size: 12px; font-weight: 700; }
-  .desc { color: #8b949e; font-size: 11.5px; font-family: ui-monospace, Menlo, Consolas, monospace; margin-top: 2px; word-break: break-all; }
-  .detail { color: #6e7681; font-size: 11px; margin-top: 2px; }
-  .chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #161b22; border: 1px solid #21262d; color: #8b949e; }
-  .chip.verified { color: #7ee787; border-color: #238636; }
-  .chip.reachable { color: #79c0ff; border-color: #1f6feb; }
-  .chip.failed { color: #ff7b72; border-color: #6e2b28; }
-  details { background: #161b22; border: 1px solid #232a33; border-radius: 12px; padding: 4px 12px; margin: 0 0 12px; }
-  details > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; padding: 8px 0; list-style: none; }
-  details > summary::-webkit-details-marker { display: none; }
-  details > summary::before { content: "▸ "; color: #7ee787; }
-  details[open] > summary::before { content: "▾ "; }
-  details .body { padding: 0 0 10px; font-size: 13px; color: #c9d1d9; }
-  code, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; background: #0d1117; padding: 1px 5px; border-radius: 5px; word-break: break-all; }
-  ol, ul { padding-left: 20px; margin: 8px 0; }
-  li { margin: 5px 0; }
-  .warn { border-left: 4px solid #d29922; background: #1c1710; padding: 9px 11px; border-radius: 8px; font-size: 12.5px; }
-  .rowhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .count { font-size: 12px; color: #8b949e; }
-  .hint { color: #6e7681; font-size: 11.5px; margin-top: 6px; }
-  a { color: #79c0ff; }
-  @media (max-width: 420px) { body { font-size: 14.5px; } .mini { padding: 9px 10px; } }
+  button[disabled] { opacity: .65; cursor: progress; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 10px; }
+  .status { margin: 16px 0 0; font-size: .9375rem; color: var(--dim); min-height: 1.5em; }
+  .alert { margin: 10px 0 0; font-size: .9375rem; font-weight: 600; color: #ff7b72; }
+  .alert:empty { margin: 0; }
+  @media (prefers-color-scheme: light) { .alert { color: #cf222e; } }
+  .meter { margin-top: 10px; font-size: .875rem; color: var(--dim); }
+  ul[role="listbox"] { list-style: none; margin: 18px 0 0; padding: 0; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--panel); }
+  ul[role="listbox"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  li[role="option"] { display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+    border-bottom: 1px solid var(--line); cursor: pointer; }
+  li[role="option"]:last-child { border-bottom: 0; }
+  li[role="option"][aria-selected="true"] { background: rgba(63, 185, 80, .16); box-shadow: inset 4px 0 0 var(--good); }
+  .ping { font: 700 1rem/1 ui-monospace, Menlo, Consolas, monospace; color: var(--good);
+    font-variant-numeric: tabular-nums; min-width: 4.6rem; }
+  .who { flex: 1; min-width: 0; }
+  .who b { display: block; font-weight: 600; font-size: .9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who span { display: block; color: var(--dim); font-size: .8125rem; font-family: ui-monospace, Menlo, Consolas, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .risk { color: #d29922; font-size: .8125rem; }
+  li button { width: auto; min-height: 44px; padding: 10px 14px; font-size: .875rem; background: transparent;
+    border: 1px solid var(--line); color: var(--fg); border-radius: 9px; flex: none; }
+  li button.copied { border-color: var(--good); color: var(--good); }
+  .empty { padding: 16px; color: var(--dim); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>VPN node verifier <span>·</span> copy-paste configs that answer</h1>
-  <p class="sub">Pulls public v2ray/Xray feeds → parses them → <b>probes each node from this device</b> → hands you links that actually respond. Runs entirely in this file; no server, no account, no analytics.</p>
-</header>
-
 <main>
-  <section class="card">
-    <div class="rowhead"><h2>1 · sources</h2><span class="count" id="count">0 shown / 0 loaded</span></div>
-    <div id="feeds"></div>
-    <input type="text" id="customUrl" placeholder="…or paste any subscription URL (raw.githubusercontent / jsDelivr / your own)" style="margin-top:8px">
-    <textarea id="paste" placeholder="…or paste links here (vless://, vmess://, trojan://, ss:// — one per line, base64 blobs welcome)" style="margin-top:8px"></textarea>
-    <div class="hint">Feeds are GitHub-hosted text files; each fetch automatically falls back raw → jsDelivr → statically → GitHub API.</div>
-  </section>
+  <h1 id="title">Working VPN configurations</h1>
+  <p class="hint" id="go-hint">One button. It fetches the public v2ray feeds, tests every node through the internet you are on right now, and lists only the ones that answer, fastest first. Tap a row or press Enter to copy its configuration into your VPN app.</p>
+  <button id="btnGo" type="button" aria-describedby="go-desc">Get me configurations</button>
+  <p id="go-desc" class="visually-hidden">Tests every published node using this device's internet connection, then lists only the ones that answer.</p>
+  <p class="status" id="status" role="status" aria-live="polite" aria-atomic="true">Not run yet.</p>
+  <p class="alert" id="alert" role="alert" aria-atomic="true"></p>
+  <p class="meter" id="meter" aria-hidden="true"></p>
 
-  <section class="card">
-    <h2>2 · options</h2>
-    <div class="grid">
-      <label class="opt">probe at most <input type="number" id="maxProbe" value="150" min="10" max="1000"></label>
-      <label class="opt">concurrency <input type="number" id="conc" value="6" min="1" max="12"></label>
-      <label class="opt">timeout ms <input type="number" id="timeout" value="7000" min="2000" max="20000" step="500"></label>
-    </div>
-    <label class="feed"><input type="checkbox" id="tlsOnly" checked> hide nodes with no transport encryption (<code>security=none</code> — the operator sees everything you do)</label>
-    <label class="feed"><input type="checkbox" id="autoProbe" checked> probe immediately after loading</label>
-    <input type="text" id="filter" placeholder="filter by name / host / protocol (e.g. reality, 🇺🇸, 443)" style="margin-top:8px">
-    <div class="btns" style="margin-top:10px">
-      <button class="primary" id="btnLoad">Load nodes</button>
-      <button class="blue" id="btnProbe">Probe visible list</button>
-      <button id="btnAll">toggle selection</button>
-      <button id="btnClear">clear</button>
-    </div>
-    <div class="prog" id="progWrap" hidden><div id="prog"></div></div>
-    <span id="progTxt"></span>
-    <div class="status" id="status">ready.</div>
-    <div style="margin-top:6px" id="tally"></div>
-  </section>
-
-  <section class="card">
-    <div class="rowhead">
-      <h2 style="margin:0">3 · results <span class="hint" style="display:inline">(green = this device reached its inbound right now)</span></h2>
-    </div>
-    <div id="list"><div class="hint">Nothing loaded yet.</div></div>
-    <div class="btns" style="margin-top:10px">
-      <button class="primary" id="btnCopySel">copy selected links</button>
-      <button id="btnDlSub">download subscription.b64</button>
-      <button id="btnDlLinks">download links.txt</button>
-      <button id="btnDlClash">download clash-verified.yaml</button>
-    </div>
-    <div class="hint">Paste order that works everywhere: <b>v2rayNG</b> → paste links (multi-line OK) · <b>Hiddify / Streisand / Flare / Karing / NekoBox / Shadowrocket</b> → paste link or import the .b64 file · <b>v2rayN</b> (Windows) → Server ▸ Import from local file · <b>Clash Verge Rev</b> → import the yaml.</div>
-  </section>
-
-  <section class="card" id="own">
-    <h2>4 · or add a node you own (Railway / VPS) and verify it</h2>
-    <div class="grid">
-      <label class="opt">mode
-        <select id="ownMode"><option value="ws">VLESS · WebSocket + TLS (port 443)</option><option value="reality">VLESS · Reality (raw TCP)</option></select>
-      </label>
-      <label class="opt">port <input type="text" id="ownPort" placeholder="blank = 443"></label>
-    </div>
-    <input type="text" id="ownDomain" placeholder="domain, e.g. myapp-ab12.up.railway.app" style="margin-top:8px">
-    <input type="text" id="ownUuid" placeholder="UUID (the one printed in your Railway deploy log)" style="margin-top:8px">
-    <div class="grid" style="margin-top:8px">
-      <label class="opt">ws path <input type="text" id="ownPath" value="/ws"></label>
-      <label class="opt">name <input type="text" id="ownName" value="railway-us"></label>
-      <label class="opt">Reality pbk <input type="text" id="ownPbk" placeholder="public key"></label>
-      <label class="opt">Reality sid <input type="text" id="ownSid" placeholder="short id"></label>
-      <label class="opt">SNI override <input type="text" id="ownSni" placeholder="optional"></label>
-    </div>
-    <div class="btns" style="margin-top:10px">
-      <button class="blue" id="btnBuildOwn">build &amp; verify</button>
-      <button id="btnCopyOwn">copy link</button>
-    </div>
-    <textarea id="ownOut" placeholder="your vless:// link appears here" style="margin-top:8px"></textarea>
-  </section>
-
-  <details id="help">
-    <summary>What “VERIFIED” does and does not mean</summary>
-    <div class="body">
-      <p><b>VERIFIED</b> = this device completed a WebSocket <b>101 handshake</b> with the node's inbound at its exact path, with working TLS and SNI. That proves the port is open, the path matches, the certificate is trusted, and the node is reachable <b>from your network right now</b> — which is the failure mode that kills 90% of published free nodes.</p>
-      <p><b>It does not prove:</b> the node forwards traffic to the open internet (browsers cannot use a node as a proxy), its bandwidth, its quota, or whether it logs you. A verified node can still be slow, capped, or snooping.</p>
-      <p><b>REACHABLE</b> = TLS + HTTP answered, but the protocol (trojan / ss / reality-tcp) can't be dialled from a browser, so only reachability is proven.<br>
-      <b>NOT PROBEABLE</b> = a browser cannot test this one (self-signed cert, or a browser-blocked port). It may still work in your VPN app, which is more permissive.<br>
-      <b>DEAD/BLOCKED</b> = connect refused, timed out, or the path was wrong <i>from here</i>; another network may differ.</p>
-      <div class="warn"><b>Free public nodes are shared.</b> ~90% of the current US free pool has no transport encryption at all, and the "fast" ones are oversubscribed farms whose operators monetise your traffic (some even stuff Telegram ad text into the ALPN field). Fine for opening a blocked site; never for banking, logins, or anything you would not read aloud in a café. For a VPN you actually want to keep, run your own node — see the next section.</div>
-    </div>
-  </details>
-
-  <details id="railway">
-    <summary>Want your own US node? Exact Railway steps (v2ray/Xray, no VPS bill)</summary>
-    <div class="body">
-      <p>Three facts that shape everything:</p>
-      <ol>
-        <li><b>Railway's Acceptable Use Policy prohibits "operating proxies or anonymization services"</b> (railway.com/legal/acceptable-use). People do this anyway; it is also bannable. Do not put anything sensitive through it, and expect it to vanish someday.</li>
-        <li><b>You don't get a dedicated IP.</b> You get a hostname: <code>xxx.up.railway.app</code> (HTTPS/WebSocket, port 443) or <code>name.proxy.rlwy.net:PORT</code> (raw TCP). Outbound is a shared US IP — which is exactly what you want for unblocking, but it is not "one IP you own". Static <i>outbound</i> IPs exist as an add-on (<code>railway outbound-network static-ip enable</code>).</li>
-        <li><b>Money:</b> Trial = $5 one-time credit (~30 days, no card for the trial itself), then the Free plan gives $1 credit/month (1 vCPU, 0.5 GB RAM, 1 project, 0.5 GB volume). Egress is $0.05/GB, so $1 ≈ ~20 GB/month of traffic; Xray idling costs cents. Set a usage limit on day one.</li>
-      </ol>
-      <p><b>Route A — RailPanel (the "rail panel on GitHub" you were told about):</b></p>
-      <ol>
-        <li>GitHub ▸ <code>F0rc3Run/RailPanel</code> ▸ <b>Fork</b>.</li>
-        <li>railway.com ▸ sign in with GitHub ▸ <b>New Project ▸ Deploy from GitHub repo</b> ▸ install the Railway GitHub app if asked ▸ pick <code>you/RailPanel</code>. It auto-builds the <code>Dockerfile</code> (first build takes a few minutes: it downloads the pinned Xray core).</li>
-        <li><b>Before anything else:</b> service ▸ <b>Settings ▸ Volumes ▸ Add Volume</b>, mount path exactly <code>/data</code>. Without it every redeploy wipes your inbounds and clients — the container refuses to start without a writable <code>/data</code>.</li>
-        <li><b>Settings ▸ Variables:</b> set <code>PANEL_PATH</code> to something only you know (e.g. <code>railpanel</code>) and <code>TZ</code> to your zone. <b>Do not set <code>PORT</code></b> — Railway injects it.</li>
-        <li><b>Settings ▸ Networking ▸ Public Networking ▸ Generate Domain</b>, target port <code>8080</code>.</li>
-        <li>Open <code>https://&lt;your-domain&gt;/&lt;PANEL_PATH&gt;/</code> ▸ first sign-in is <code>railpanel</code> / <code>railpanel</code> plus a <b>Railway API token</b> (Account Settings ▸ Tokens) ▸ change that username/password immediately.</li>
-        <li>Create your VLESS inbound, then <b>Nodes ▸ Clients ▸ +</b> and copy the subscription link from that client's row — one link that serves base64 to v2rayNG/v2rayN/Streisand/NekoBox/Karing, YAML to Clash Meta, JSON to sing-box/Hiddify, and shows a QR code in a browser. Set a traffic limit and an expiry on the client.</li>
-        <li>Optional, for censorship-resistance: buy a ~$2/yr domain, put it on Cloudflare's free plan, then <b>Railway ▸ Networking ▸ Custom Domain</b> (target <code>8080</code>) → add the CNAME in Cloudflare with <b>grey cloud (DNS only)</b> → wait for the certificate tick → <b>switch to orange</b> → Cloudflare <b>SSL/TLS = Full</b> (not Full Strict, not Flexible). Keep ALPN on <code>http/1.1</code>: if h2 negotiates, the WebSocket upgrade fails and every node dies. Then <b>Nodes ▸ Generate</b> turns one server into dozens of Cloudflare edge IPs.</li>
-        <li>Region: service ▸ <b>Settings ▸ Deploy region</b> ▸ <code>US West Metal</code> (California, <code>us-west2</code>) or <code>US East Metal</code> (Virginia, <code>us-east4-eqdc4a</code>). Changing it redeploys and does not change your domain.</li>
-      </ol>
-      <p><b>Route B — minimal DIY bundle</b> (the files in <code>railway-xray-bundle/</code>: one <code>Dockerfile</code> + one <code>start.sh</code>, configs validated against Xray-core):</p>
-      <ol>
-        <li><code>bash &lt;(curl -fsSL railway.com/install.sh)</code> → <code>railway login</code></li>
-        <li>inside the bundle folder: <code>railway init</code> → <code>railway up</code></li>
-        <li><code>railway variable set UUID=&lt;your-uuid&gt;</code> (else one is generated for you) → <code>railway domain</code></li>
-        <li><code>railway variable set MODE=ws DOMAIN=&lt;the domain it printed&gt;</code> → <code>railway up</code> again → <code>railway logs</code> prints your ready-to-paste <code>vless://</code> link. Paste it above in section 4 to verify it.</li>
-        <li>Prefer raw TCP + Reality instead? <b>Settings ▸ Networking ▸ TCP Proxy ▸ internal port <code>4433</code></b>, then <code>MODE=reality</code> + <code>TCP_PROXY_HOST</code>/<code>TCP_PROXY_PORT</code>. Caveat Xray itself warns about: Reality on a non-443 port is more likely to be blocked by deep-packet filters — on hostile networks use the WebSocket-over-443 domain.</li>
-      </ol>
-      <p><b>Other real options</b> if Railway's rules or caps bother you: <code>IRNova/Nova-Proxy</code> (panel that lives on Cloudflare's free Workers plan), a $2–4/mo US VPS (Hetzner is EU; RackNerd/aeza/Cloudzy are US) with <code>iPythoning/SUIWARP</code> — read any install script before piping it to bash — or a paid VPN, which is the only choice with a support line.</p>
-    </div>
-  </details>
-
-  <details>
-    <summary>Troubleshooting this page</summary>
-    <div class="body">
-      <ul>
-        <li><b>Every fetch failed:</b> your browser blocked the request. Open the file with <b>Firefox</b> on Android (Chrome sometimes restricts <code>file://</code> network access), or paste the links themselves into the box in section 1 — parsing and probing still work.</li>
-        <li><b>No plain-<code>ws://</code> probes:</b> uncheck “hide nodes with no transport encryption” only if you accept the risk; browsers refuse insecure WebSockets from some origins. Those nodes are the unencrypted ones anyway.</li>
-        <li><b>“NOT PROBEABLE” everywhere:</b> normal for trojan/ss/Reality — the browser can't speak those protocols. Test them in your VPN app's own latency check.</li>
-        <li><b>Slow/near-zero results:</b> raise the timeout to 10000 ms and lower concurrency to 3 (mobile carriers throttle many parallel sockets).</li>
-        <li><b>Nothing is selected on export:</b> tick rows manually; auto-select only picks verified/reachable ones.</li>
-      </ul>
-    </div>
-  </details>
+  <h2 id="list-label" class="visually-hidden">Working configurations, sorted by ping</h2>
+  <p id="list-help" class="visually-hidden">Use the up and down arrow keys to move between configurations. Press Enter to copy the selected configuration. Each row states the ping in milliseconds, then the node name and address.</p>
+  <ul role="listbox" id="list" tabindex="0" aria-labelledby="list-label" aria-describedby="list-help" hidden></ul>
 </main>
 
+<noscript><p style="padding:16px">This page needs JavaScript: it tests the nodes from your own connection, which a server cannot do for you.</p></noscript>
 <script>
 /* ============================================================================
  * core.js — engine for vpn-node-verifier.html
@@ -653,6 +506,78 @@ function buildVlessLink(o) {
   return `vless://${o.uuid}@${o.domain}:${port}?${qs}#${encodeURIComponent(o.name || "my-node")}`;
 }
 
+/* ------------------------------------------------------------ ping engine ---
+ * A single handshake proves reachability; three of them give a usable ping and
+ * drop flaky nodes. Values of 0 / -1 / 1 ms are measurement junk (same box,
+ * LAN, or a stubbed result) and are never presented as a working node.       */
+const PING_JUNK = new Set([0, -1, 1]);
+
+function median(nums) {
+  if (!nums.length) return null;
+  const a = nums.slice().sort((x, y) => x - y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
+}
+
+/** Is this RTT something we will show the user? minMs defaults to 2 (kills 0/-1/1). */
+function isUsablePing(rttMs, opts = {}) {
+  const minMs = opts.minMs === undefined ? 2 : opts.minMs;
+  return typeof rttMs === "number" && isFinite(rttMs) && !isNaN(rttMs) &&
+         rttMs >= minMs && !PING_JUNK.has(rttMs) && rttMs <= (opts.maxMs || 3000);
+}
+
+/** Probe a node `samples` times; all must succeed. Returns {ok, pingMs, detail}. */
+async function pingNode(n, opts = {}) {
+  const samples = Math.max(1, opts.samples || 3);
+  const timeoutMs = opts.timeoutMs || 7000;
+  const gapMs = opts.gapMs === undefined ? 120 : opts.gapMs;
+  const one = async () => {
+    const v = await probeNode(n, { timeoutMs });
+    return v;
+  };
+  const rtts = [];
+  let last = null;
+  for (let i = 0; i < samples; i++) {
+    const v = await one();
+    last = v;
+    if (v.state !== "verified" || !isFinite(v.rttMs || NaN)) {
+      return { ok: false, pingMs: null, detail: v.detail || v.state || "unreachable" };
+    }
+    rtts.push(v.rttMs);
+    if (i < samples - 1 && gapMs) await new Promise((r) => setTimeout(r, gapMs));
+  }
+  const pingMs = median(rtts);
+  if (!isUsablePing(pingMs, opts)) {
+    return { ok: false, pingMs, detail: `ping ${pingMs}ms is not a real measurement (junk value)` };
+  }
+  return { ok: true, pingMs, samples: rtts, detail: `answered ${samples}/${samples} handshakes` };
+}
+
+/** Keep only nodes that genuinely answer, each with a usable ping. Sorted by ping. */
+async function findWorking(nodes, opts = {}) {
+  const onProgress = opts.onProgress || function(){};
+  const concurrency = Math.max(1, Math.min(opts.concurrency || 6, 10));
+  const budget = Math.min(nodes.length, opts.max || 220);
+  const queue = nodes.slice(0, budget).map((n) => n);
+  const good = [];
+  let done = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const n = queue.shift();
+      let r;
+      try { r = await pingNode(n, opts); }
+      catch (e) { r = { ok: false, pingMs: null, detail: String((e && e.message) || e) }; }
+      n.pingMs = r.pingMs; n.verdict = r.ok ? { state: "verified", rttMs: r.pingMs, detail: r.detail }
+                                            : { state: r.ok ? "verified" : "failed", rttMs: r.pingMs, detail: r.detail };
+      if (r.ok) good.push(n);
+      onProgress(++done, budget, n, good.length);
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  good.sort((a, b) => a.pingMs - b.pingMs);
+  return { working: good, scanned: done };
+}
+
 /* one-line summary used by the UI */
 function describe(n) {
   const sec = n.security === "reality" ? "reality" : n.security === "tls" ? "tls" : "no-tls";
@@ -663,254 +588,191 @@ function describe(n) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { FEEDS, urlCandidates, extractLinks, parseLink, prepare, preScore, dedupeKey,
     probeNode, probeAll, rank, wsProbe, httpProbe, exportLinks, exportSubscription, clashYaml,
-    describe, portBlocked, b64decode, b64encode, fetchText, buildVlessLink };
+    describe, portBlocked, b64decode, b64encode, fetchText, buildVlessLink,
+    median, isUsablePing, pingNode, findWorking };
 }
 
 
-const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, httpProbe, parseLink, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, splitHostPort, urlCandidates, wsProbe };
+const Core = { BAD_MARKERS, FEEDS, FORBIDDEN_PORTS, GH_BLOB, GH_RAW, IP_RE, LINK_RE, PING_JUNK, STATE_ORDER, b64decode, b64encode, buildVlessLink, clashYaml, dec, dedupeKey, describe, exportLinks, exportSubscription, extractLinks, fetchText, fetchWithTimeout, findWorking, httpProbe, isUsablePing, median, parseLink, pingNode, portBlocked, preScore, prepare, probeAll, probeNode, qs, rank, splitHostPort, urlCandidates, wsProbe };
 
-/* app.js — DOM glue for vpn-node-verifier.html. Everything defensive: this runs
-   from file:// on Android browsers and desktop browsers, with no build step. */
+/* app.js — one action: fetch → verify through this device's internet → list the
+ * working ones. Screen-reader-first: a real listbox, arrow-key navigation,
+ * polite live-region stage announcements (never per-node chatter), and copy on
+ * Enter. No other controls exist on the page by design. */
 (function () {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  const $$ = (s) => Array.from(document.querySelectorAll(s));
-  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  let NODES = [], ACTIVE = -1, running = false;
 
-  let NODES = [];        // prepared (deduped, sorted best-first)
-  let VIEW = [];         // currently rendered
-  let busy = false;
+  /* Two live regions, because they do different jobs: progress and results are
+   * polite (#status, so it never talks over the user), while a failure has to
+   * interrupt (#alert with role="alert") or TalkBack leaves it queued behind
+   * whatever was being read. Only one of them ever holds text. */
+  function say(msg, kind) {
+    const st = $("#status"), al = $("#alert");
+    if (kind === "alert") { st.textContent = ""; al.textContent = msg; }
+    else { al.textContent = ""; st.textContent = msg; }
+  }
+  function meter(txt) { $("#meter").textContent = txt; }
 
-  /* ------------------------------------------------------------ clipboard -- */
   async function copy(text, btn) {
-    let done = false;
-    try { await navigator.clipboard.writeText(text); done = true; } catch (e) { /* fall through */ }
-    if (!done) {
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
+    if (!ok) {                                   // file:// and older browsers
       try {
         const ta = document.createElement("textarea");
         ta.value = text; ta.setAttribute("readonly", "");
-        ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+        ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;height:1px;width:1px";
         document.body.appendChild(ta); ta.focus(); ta.select();
-        done = document.execCommand("copy"); document.body.removeChild(ta);
-      } catch (e2) { done = false; }
+        ok = document.execCommand("copy"); document.body.removeChild(ta);
+      } catch (e2) { ok = false; }
     }
-    flash(btn, done ? "copied" : "select + copy");
-    return done;
-  }
-  function flash(btn, msg) {
-    if (!btn) return;
-    const old = btn.textContent; btn.textContent = msg; btn.classList.add("ok");
-    setTimeout(() => { btn.textContent = old; btn.classList.remove("ok"); }, 1400);
-  }
-  function status(msg, kind) {
-    const el = $("#status"); if (!el) return;
-    el.textContent = msg; el.className = "status " + (kind || "");
-  }
-
-  /* --------------------------------------------------------------- feeds -- */
-  function feedCheckboxes() { return $$('input[data-feed]:checked').map((i) => i.dataset.feed); }
-  function selectedFeeds() {
-    return Core.FEEDS.filter((f) => feedCheckboxes().includes(f.id));
-  }
-
-  async function load() {
-    if (busy) return;
-    busy = true; $("#btnLoad").disabled = true;
-    const t0 = Date.now();
-    let text = "";
-    const pasted = ($("#paste").value || "").trim();
-    if (pasted) text += "\n" + pasted;
-
-    const feeds = selectedFeeds();
-    const custom = ($("#customUrl").value || "").trim();
-    if (custom) feeds.push({ id: "custom", label: "custom", url: custom });
-
-    const notes = [];
-    for (const f of feeds) {
-      status(`fetching ${f.label} …`);
-      try {
-        const r = await Core.fetchText(f.url, { timeoutMs: parseInt($("#timeout").value, 10) + 8000 });
-        const got = r.text.length;
-        text += "\n" + r.text;
-        notes.push(`${f.id}: ${(got / 1024).toFixed(0)}KB via ${/^https:\/\/([^/]+)/.exec(r.via)[1]}`);
-      } catch (e) { notes.push(`${f.id}: FAILED (${String(e.message).slice(0, 60)})`); }
+    if (btn) {
+      const prev = btn.textContent;
+      btn.textContent = ok ? "Copied" : "Copy failed"; btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = prev; btn.classList.remove("copied"); }, 1600);
     }
-    if (!text.trim()) { status("nothing to parse — no feed responded and nothing pasted", "err"); busy = false; $("#btnLoad").disabled = false; return; }
-
-    const links = Core.extractLinks(text);
-    const parsed = links.map(Core.parseLink);
-    const bad = parsed.filter((x) => !x).length;
-    NODES = Core.prepare(parsed.filter(Boolean));
-    const tlsOnly = $("#tlsOnly").checked;
-    status(`${links.length} links → ${NODES.length} unique (${bad} unparsable) in ${((Date.now() - t0) / 1000).toFixed(1)}s · ${notes.join(" | ")}`);
-    render();
-    busy = false; $("#btnLoad").disabled = false;
-    if ($("#autoProbe").checked) probe();
+    say(ok ? "Configuration copied to the clipboard. Paste it into your VPN app."
+           : "Could not reach the clipboard — select the row and copy manually.", ok ? null : "alert");
+    return ok;
   }
 
-  function visibleNodes() {
-    let list = NODES;
-    if ($("#tlsOnly").checked) list = list.filter((n) => n.security === "tls" || n.security === "reality");
-    const q = ($("#filter").value || "").trim().toLowerCase();
-    if (q) list = list.filter((n) => (n.remark + " " + n.host + " " + n.port + " " + n.proto).toLowerCase().includes(q));
-    return list;
+  /* ------------------------------------------------------------- rendering -- */
+  /* The row on screen is dense with separators and monospace noise; a screen
+   * reader would read "· no-tls" out loud. Give the option a sentence instead,
+   * leading with the ping because that is what the user is comparing. */
+  function rowLabel(n, i) {
+    const enc = n.security === "reality" ? "encrypted with Reality"
+      : n.security === "tls" ? "encrypted with TLS" : "not encrypted";
+    const via = n.network === "ws" ? "WebSockets" : String(n.network || "tcp");
+    return `Ping ${n.pingMs} milliseconds. ${n.remark || "node " + (i + 1)}. ` +
+           `${n.proto} at ${n.host}, port ${n.port}, over ${via}, ${enc}.`;
   }
-
-  /* --------------------------------------------------------------- render -- */
-  const BADGE = { verified: ["VERIFIED", "g"], reachable: ["REACHABLE", "b"], unverifiable: ["NOT PROBEABLE", "y"],
-                  failed: ["DEAD/BLOCKED", "r"], error: ["ERROR", "r"], skipped: ["NOT PROBED", "n"] };
 
   function render() {
-    VIEW = visibleNodes();
-    const box = $("#list"); box.innerHTML = "";
-    const frag = document.createDocumentFragment();
-    VIEW.forEach((n, i) => {
-      const v = n.verdict || {};
-      const [label, cls] = BADGE[v.state] || ["NOT PROBED", "n"];
-      const row = document.createElement("div");
-      row.className = "row " + (cls || "");
-      row.dataset.idx = String(i);
-      const chk = n._sel ? "checked" : "";
-      row.innerHTML =
-        `<label class="pick"><input type="checkbox" ${chk} data-pick="${i}"></label>` +
-        `<div class="main">` +
-          `<div class="top"><span class="badge ${cls}">${label}</span>` +
-          `<span class="rtt">${v.rttMs ? v.rttMs + "ms" : ""}</span>` +
-          `<span class="name">${esc(n.remark).slice(0, 64)}</span></div>` +
-          `<div class="desc">${esc(Core.describe(n))}</div>` +
-          (v.detail ? `<div class="detail">${esc(v.detail)}</div>` : "") +
-        `</div>` +
-        `<button class="mini" data-copy="${i}">copy</button>`;
-      frag.appendChild(row);
+    const ul = $("#list");
+    ul.innerHTML = "";
+    NODES.forEach((n, i) => {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.id = "opt-" + i;
+      li.setAttribute("aria-selected", i === 0 ? "true" : "false");
+      li.dataset.i = String(i);
+      li.setAttribute("aria-label", rowLabel(n, i));
+      const unenc = !(n.security === "tls" || n.security === "reality");
+      li.innerHTML =
+        `<span class="ping">${n.pingMs}&nbsp;ms</span>` +
+        `<span class="who"><b>${esc(n.remark || "node " + (i + 1))}</b>` +
+        `<span>${esc(n.proto)} · ${esc(n.host)}:${esc(n.port)} · ${esc(n.network === "ws" ? "ws " + (n.path || "/") : n.network)} · ${esc(n.security || "none")}` +
+        (unenc ? `</span><span class="risk">unencrypted</span>` : `</span>`) +
+        `</span>` +
+        `<button type="button" tabindex="-1" aria-hidden="true">Copy</button>`;
+      ul.appendChild(li);
     });
-    box.appendChild(frag);
-    if (!VIEW.length) box.innerHTML = `<div class="hint">${NODES.length ? "nothing matches the filter/options — untick \u201chide no-encryption nodes\u201d or clear the filter" : "Nothing loaded yet."}</div>`;
-    $("#count").textContent = `${VIEW.length} shown / ${NODES.length} loaded`;
-    tally();
+    ul.hidden = false;
+    ACTIVE = 0;
+    setActive(0, false);
+    say(`${NODES.length} working configuration${NODES.length === 1 ? "" : "s"}. Focus is on the list: arrow keys to browse, Enter to copy.`, null);
   }
 
-  function tally() {
-    const c = {};
-    VIEW.forEach((n) => { const s = (n.verdict || {}).state || "skipped"; c[s] = (c[s] || 0) + 1; });
-    $("#tally").innerHTML = Object.entries(c).map(([k, v]) => {
-      const [label] = BADGE[k] || [k];
-      return `<span class="chip ${k}">${label} ${v}</span>`;
-    }).join(" ") || '<span class="chip">nothing yet</span>';
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  function setActive(i, focus) {
+    const ul = $("#list"), items = ul.querySelectorAll('[role="option"]');
+    if (!items.length) return;
+    i = Math.max(0, Math.min(i, items.length - 1));
+    items.forEach((el, k) => el.setAttribute("aria-selected", k === i ? "true" : "false"));
+    ACTIVE = i;
+    ul.setAttribute("aria-activedescendant", items[i].id);
+    if (focus !== false) items[i].scrollIntoView({ block: "nearest" });
   }
 
-  /* --------------------------------------------------------------- probe --- */
-  async function probe() {
-    if (busy) return;
-    busy = true; $("#btnProbe").disabled = true; $("#progWrap").hidden = false;
+  /* ------------------------------------------------------------------ flow -- */
+  async function go() {
+    if (running) return;
+    running = true;
+    const btn = $("#btnGo");
+    btn.disabled = true; btn.setAttribute("aria-busy", "true");
+    $("#list").hidden = true; $("#list").innerHTML = "";
+    NODES = []; ACTIVE = -1;
     const t0 = Date.now();
-    const list = visibleNodes();
-    const max = parseInt($("#maxProbe").value, 10) || 150;
-    const opts = { timeoutMs: parseInt($("#timeout").value, 10) || 7000,
-                   concurrency: parseInt($("#conc").value, 10) || 6, max };
-    let nDone = 0;
-    opts.onProgress = () => {
-      nDone++;
-      $("#prog").style.width = Math.min(100, (100 * nDone) / Math.min(list.length, max)) + "%";
-      $("#progTxt").textContent = `${nDone}/${Math.min(list.length, max)}`;
-      if (nDone % 6 === 0) render();
-    };
-    status("probing from this device…");
-    await Core.probeAll(list.slice(0, max), opts);
-    // auto-select the best ones for a one-tap copy
-    Core.rank(NODES).slice(0, 10).forEach((n) => {
-      if (n.verdict && (n.verdict.state === "verified" || n.verdict.state === "reachable")) n._sel = true;
+
+    say("Fetching the public node feeds…");
+    const results = await Promise.allSettled(Core.FEEDS.map((f) => Core.fetchText(f.url, { timeoutMs: 15000 })));
+    let text = "";
+    const feedErrs = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value && r.value.text) text += "\n" + r.value.text;
+      else feedErrs.push(Core.FEEDS[i].id);
     });
-    render();
-    const good = VIEW.filter((n) => (n.verdict || {}).state === "verified").length;
-    $("#btnLoad").disabled = false;
-    status(`${good} node(s) verified alive from your network · ${((Date.now() - t0) / 1000).toFixed(1)}s · sorted fastest first`, good ? "ok" : "");
-    busy = false; $("#btnProbe").disabled = false; $("#btnLoad").disabled = false; $("#progWrap").hidden = true;
-  }
-
-  /* ------------------------------------------------------------- selection -- */
-  function selectedNodes() {
-    const s = VIEW.filter((n) => n._sel);
-    return s.length ? s : VIEW.filter((n) => n.verdict && n.verdict.state === "verified").slice(0, 10);
-  }
-  function download(name, text, mime) {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([text], { type: mime || "text/plain;charset=utf-8" }));
-    a.download = name; document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
-    status(`wrote ${name} (${(text.length / 1024).toFixed(1)}KB)`, "ok");
-  }
-
-  /* ------------------------------------------------------------ own node --- */
-  function ownBuild(verify) {
-    const o = { mode: $("#ownMode").value, domain: $("#ownDomain").value.trim(),
-      port: $("#ownPort").value.trim() || undefined, uuid: $("#ownUuid").value.trim(),
-      path: $("#ownPath").value.trim() || "/ws", name: $("#ownName").value.trim() || "my-railway-node",
-      pbk: $("#ownPbk").value.trim(), sid: $("#ownSid").value.trim(), sni: $("#ownSni").value.trim() || undefined };
-    if (!o.domain || !o.uuid) { status("domain and uuid are required", "err"); return; }
-    const link = Core.buildVlessLink(o);
-    $("#ownOut").value = link;
-    const n = Core.parseLink(link);
-    if (n) {
-      NODES = [n].concat(NODES); render();
-      if (verify) {
-        status("verifying your node from this device…");
-        Core.probeNode(n, { timeoutMs: 9000 }).then((v) => {
-          n.verdict = v; render();
-          status(v.state === "verified" ? `your node answered the WS handshake in ${v.rttMs}ms — inbound is live ✓`
-               : `not verified: ${v.state} · ${v.detail}`, v.state === "verified" ? "ok" : "err");
-        });
-      }
+    const fetched = results.filter((r) => r.status === "fulfilled").length;
+    if (!text.trim()) {
+      done("Could not reach any node feed from this connection. Check that this browser can open raw.githubusercontent.com, then try again.", "alert", btn);
+      return;
     }
-    return link;
-  }
 
-  /* ---------------------------------------------------------------- wire-up -- */
-  function init() {
-    $("#feeds").innerHTML = Core.FEEDS.map((f) =>
-      `<label class="feed"><input type="checkbox" data-feed="${f.id}" checked> ${esc(f.label)}</label>`).join("");
-    try {
-      const saved = JSON.parse(localStorage.getItem("vnv.prefs") || "{}");
-      Object.entries(saved).forEach(([k, v]) => { const el = $("#" + k); if (el) el[typeOf(el)] = v; });
-    } catch {}
-    const save = () => {
-      const o = {};
-      ["maxProbe", "timeout", "conc", "tlsOnly", "autoProbe", "customUrl"].forEach((k) => {
-        const el = $("#" + k); if (el) o[k] = el[typeOf(el)];
-      });
-      try { localStorage.setItem("vnv.prefs", JSON.stringify(o)); } catch {}
-    };
-    function typeOf(el) { return el.type === "checkbox" ? "checked" : "value"; }
+    const links = Core.extractLinks(text);
+    const parsed = links.map(Core.parseLink).filter(Boolean);
+    if (!parsed.length) {
+      done(`Downloaded ${(text.length / 1024).toFixed(0)} KB but found no parsable configurations.`, "alert", btn);
+      return;
+    }
+    NODES = Core.prepare(parsed);
+    const probeable = NODES.filter((n) => n.network === "ws");
+    meter(`${links.length} links · ${NODES.length} unique · ${probeable.length} testable from a browser`);
 
-    $("#btnLoad").onclick = load;
-    $("#btnProbe").onclick = probe;
-    $("#btnClear").onclick = () => { NODES = []; VIEW = []; render(); status("cleared"); };
-    $("#tlsOnly").onchange = () => { render(); save(); };
-    $("#filter").oninput = () => render();
-    ["maxProbe", "timeout", "conc", "autoProbe", "customUrl"].forEach((id) => {
-      const el = $("#" + id); if (el) el.onchange = save;
+    if (!probeable.length) {
+      done("None of the published nodes use a transport a browser can test, so nothing could be verified. Nothing is shown rather than guessing.", "alert", btn);
+      return;
+    }
+
+    say(`Testing ${Math.min(probeable.length, MAX)} nodes through your own connection — three handshakes each…`);
+    const out = await Core.findWorking(probeable, {
+      max: MAX, concurrency: 6, timeoutMs: 7000, samples: 3, minMs: 2,
+      onProgress: (d, total, _, good) => { meter(`${d}/${total} tested · ${good} working`); }
     });
-    $("#feeds").onchange = save;
-
-    $("#list").addEventListener("click", (e) => {
-      const cp = e.target.closest("[data-copy]");
-      if (cp) { const n = VIEW[+cp.dataset.copy]; if (n) copy(n.raw, cp); return; }
-      const pk = e.target.closest("[data-pick]");
-      if (pk) { const n = VIEW[+pk.dataset.pick]; if (n) { n._sel = pk.checked; } return; }
-    });
-    $("#btnCopySel").onclick = (e) => { const s = selectedNodes(); s.length ? copy(s.map((n) => n.raw).join("\n"), e.target) : status("nothing selected — run a probe first", "err"); };
-    $("#btnDlLinks").onclick = () => { const s = selectedNodes(); s.length ? download("nodes-links.txt", Core.exportLinks(s)) : status("nothing selected", "err"); };
-    $("#btnDlSub").onclick = () => { const s = selectedNodes(); s.length ? download("subscription.b64", Core.exportSubscription(s)) : status("nothing selected", "err"); };
-    $("#btnDlClash").onclick = () => {
-      const s = selectedNodes().filter((n) => ["vless", "trojan", "ss", "vmess"].includes(n.proto));
-      s.length ? download("clash-verified.yaml", Core.clashYaml(s), "text/yaml;charset=utf-8") : status("no exportable nodes selected", "err");
-    };
-    $("#btnAll").onclick = () => { const on = !VIEW.every((n) => n._sel); VIEW.forEach((n) => n._sel = on); render(); };
-    $("#btnBuildOwn").onclick = () => ownBuild(true);
-    $("#btnCopyOwn").onclick = (e) => { const v = $("#ownOut").value || ownBuild(false); if (v) copy(v, e.target); };
-
-    $$("#help summary").forEach((s) => { s.onclick = () => setTimeout(() => { const h = location.hash.replace("#", ""); if (h) document.getElementById(h) && document.getElementById(h).scrollIntoView(); }, 30); });
+    NODES = out.working;
+    if (!NODES.length) {
+      done(`Tested ${out.scanned} nodes from here and none answered three times in a row. Your network may block these ports, or the published nodes are down. Nothing is shown, because nothing was proven.`, "alert", btn);
+      return;
+    }
     render();
-    status("pick sources and press Load — nothing leaves this page except the feed fetches and the probes themselves.");
+    meter(`${out.scanned} tested · ${NODES.length} working · ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    done0(btn);
+  }
+  const MAX = 220;
+
+  function done0(btn) { btn.disabled = false; btn.removeAttribute("aria-busy"); btn.textContent = "Get me configurations"; running = false; }
+  function done(msg, kind, btn) { say(msg, kind); meter(""); if (btn) done0(btn); }
+
+  /* ---------------------------------------------------------------- wiring -- */
+  function init() {
+    $("#btnGo").addEventListener("click", go);
+    const ul = $("#list");
+    ul.addEventListener("keydown", (e) => {
+      const items = ul.querySelectorAll('[role="option"]');
+      if (!items.length) return;
+      const k = e.key;
+      if (k === "ArrowDown" || k === "ArrowRight") { setActive(ACTIVE + 1); e.preventDefault(); }
+      else if (k === "ArrowUp" || k === "ArrowLeft") { setActive(ACTIVE - 1); e.preventDefault(); }
+      else if (k === "Home") { setActive(0); e.preventDefault(); }
+      else if (k === "End") { setActive(items.length - 1); e.preventDefault(); }
+      else if (k === "Enter" || k === " " || k === "Spacebar") {
+        e.preventDefault();
+        const n = NODES[ACTIVE];
+        if (n) copy(n.raw, items[ACTIVE].querySelector("button"));
+      }
+    });
+    // give the listbox focus once results exist, so arrows work immediately
+    ul.addEventListener("focus", () => { if (ACTIVE < 0 && ul.querySelector('[role="option"]')) setActive(0, false); });
+    ul.addEventListener("click", (e) => {
+      const li = e.target.closest('[role="option"]');
+      if (!li) return;
+      const i = +li.dataset.i;
+      setActive(i, false);
+      const n = NODES[i];
+      if (n) copy(n.raw, li.querySelector("button"));
+    });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
