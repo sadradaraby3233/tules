@@ -9,3 +9,9 @@ venv/
 
 .tules/
 .tules_backups/
+
+# Android / Gradle
+.gradle/
+local.properties
+.idea/
+*.iml

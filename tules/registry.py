@@ -91,4 +91,7 @@ def decimal(payload: Dict[str, Any], key: str, default: float) -> float:
 
 
 def flag(payload: Dict[str, Any], key: str, default: bool = False) -> bool:
-	return bool(payload.get(key, default))
+	value = payload.get(key, default)
+	if not isinstance(value, bool):
+		raise ArgumentError(f"'{key}' must be a boolean (true or false)")
+	return value

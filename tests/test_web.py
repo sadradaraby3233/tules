@@ -105,3 +105,49 @@ def test_url_validation_rejects_local_and_non_http_addresses(monkeypatch):
 	)
 	with pytest.raises(TulesError):
 		web._validate_public_url("http://localhost/test")
+
+
+def test_parser_does_not_accumulate_void_elements_on_stack():
+	parser = web.PageParser("https://example.com")
+	parser.feed("<main>" + "<br>" * 1000 + '<a href="/x">link</a></main>')
+	assert not parser._stack
+	assert parser.links == [{"text": "link", "url": "https://example.com/x"}]
+
+
+def test_web_fetch_handles_empty_text(agent, monkeypatch):
+	monkeypatch.setattr(
+		web, "_request", lambda *args: (b"", "https://example.com", "text/plain", 200)
+	)
+	result = agent.run({"action": "web_fetch", "url": "https://example.com"})
+	assert result.success
+	assert result.details["content"] == ""
+
+
+def test_search_keeps_domains_ending_in_google_com():
+	assert web._google_results('<a href="https://notgoogle.com">Example</a>') == [
+		{"title": "Example", "url": "https://notgoogle.com"}
+	]
+
+
+def test_html_with_only_hidden_content_does_not_return_source(agent, monkeypatch):
+	monkeypatch.setattr(
+		web, "_request",
+		lambda *args: (
+			b"<html><script>secret</script></html>", "https://example.com", "text/html", 200
+		),
+	)
+	result = agent.run({"action": "web_fetch", "url": "https://example.com"})
+	assert result.success
+	assert result.details["content"] == ""
+
+
+def test_download_rejects_string_overwrite_flag(agent, monkeypatch):
+	monkeypatch.setattr(web, "_request", fake_request)
+	path = agent.root / "existing.txt"
+	path.write_text("original")
+	result = agent.run({
+		"action": "download_url", "url": "https://example.com", "file": "existing.txt",
+		"overwrite": "false",
+	})
+	assert not result.success
+	assert path.read_text() == "original"

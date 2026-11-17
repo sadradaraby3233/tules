@@ -6,60 +6,69 @@ from typing import Any, List, Optional
 
 from .errors import TulesError
 
-BLOCK = re.compile(r"(?is)edit:\s*(.*?)\s*endedit")
 FENCE_OPEN = re.compile(r"^```[A-Za-z0-9_+-]*\s*")
 FENCE_CLOSE = re.compile(r"\s*```$")
-TRAILING_COMMA = re.compile(r",\s*([}\]])")
-BRACKETS = (("{", "}"), ("[", "]"))
+CLOSE_AFTER_WHITESPACE = re.compile(r"\s*[}\]]")
 
 
 def find_block(text: str) -> Optional[str]:
 	"""Return the payload between the edit: and endedit markers."""
-	match = BLOCK.search(text or "")
-	if not match:
+	# Markers inside JSON strings are content, not the end of the envelope.
+	start = re.search(r"(?i)edit:\s*", text or "")
+	if not start:
 		return None
-	payload = match.group(1).strip()
-	payload = FENCE_OPEN.sub("", payload)
-	payload = FENCE_CLOSE.sub("", payload)
-	return payload.strip().strip("`").strip()
+	in_string = escaped = False
+	end = start.end()
+	while end < len(text):
+		char = text[end]
+		if escaped:
+			escaped = False
+		elif in_string and char == "\\":
+			escaped = True
+		elif char == '"':
+			in_string = not in_string
+		elif not in_string and text[end : end + 7].lower() == "endedit":
+			payload = text[start.end() : end].strip()
+			payload = FENCE_OPEN.sub("", payload)
+			payload = FENCE_CLOSE.sub("", payload)
+			return payload.strip().strip("`").strip()
+		end += 1
+	return None
 
 
 def carve_json(text: str) -> Optional[str]:
 	"""Return the first balanced JSON object or array, ignoring braces in strings."""
-	for opening, closing in BRACKETS:
-		start = text.find(opening)
-		if start == -1:
-			continue
-		depth = 0
-		in_string = False
-		escaped = False
-		for index in range(start, len(text)):
-			char = text[index]
-			if escaped:
-				escaped = False
-			elif char == "\\" and in_string:
-				escaped = True
-			elif char == '"':
-				in_string = not in_string
-			elif in_string:
-				continue
-			elif char == opening:
-				depth += 1
-			elif char == closing:
-				depth -= 1
-				if depth == 0:
+	start = next((i for i, char in enumerate(text) if char in "{["), -1)
+	if start < 0:
+		return None
+	stack = []
+	in_string = escaped = False
+	for index in range(start, len(text)):
+		char = text[index]
+		if escaped:
+			escaped = False
+		elif in_string and char == "\\":
+			escaped = True
+		elif char == '"':
+			in_string = not in_string
+		elif not in_string:
+			if char in "{[":
+				stack.append(char)
+			elif char in "}]":
+				if not stack or stack.pop() != ("{" if char == "}" else "["):
+					return None
+				if not stack:
 					return text[start : index + 1]
 	return None
 
 
 def repair(text: str) -> str:
 	"""Escape raw control characters inside strings and drop trailing commas."""
-	text = TRAILING_COMMA.sub(r"\1", text)
 	escapes = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
 	out = []
 	in_string = False
 	escaped = False
-	for char in text:
+	for index, char in enumerate(text):
 		if escaped:
 			out.append(char)
 			escaped = False
@@ -71,6 +80,8 @@ def repair(text: str) -> str:
 		if char == '"':
 			in_string = not in_string
 			out.append(char)
+			continue
+		if not in_string and char == "," and CLOSE_AFTER_WHITESPACE.match(text, index + 1):
 			continue
 		out.append(escapes[char] if in_string and char in escapes else char)
 	return "".join(out)

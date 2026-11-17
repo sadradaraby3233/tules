@@ -60,12 +60,12 @@ def _resume(
 	"""Tell the model, in its own command language, how to read what it has not seen."""
 	if nxt >= total:
 		return {"truncated": False}
+	command = json.dumps(
+		{"action": action, key: relpath, start: nxt + 1}, ensure_ascii=False, separators=(",", ":")
+	)
 	return {
 		"truncated": True,
-		"next": (
-			f'{{"action":"{action}","{key}":"{relpath}","{start}":{nxt + 1}}}'
-			f"  ({total - nxt} of {total} lines still unread)"
-		),
+		"next": f"{command}  ({total - nxt} of {total} lines still unread)",
 	}
 
 
@@ -146,9 +146,10 @@ def _iter_files(agent, base: Path) -> Iterable[Path]:
 		if any(part in SKIPPED_DIRS for part in parts[:-1]):
 			continue
 		try:
+			agent.workspace.resolve(str(path))
 			if not path.is_file():
 				continue
-		except OSError:
+		except (OSError, WorkspaceError):
 			continue
 		if agent.workspace.ignores.ignored("/".join(parts)):
 			continue
@@ -440,8 +441,11 @@ def undo(agent, payload: Dict[str, Any]) -> Result:
 def memory(agent, payload: Dict[str, Any]) -> Result:
 	mode = text(payload, "action_type", "read")
 	if mode == "list":
-		agent.workspace.state_root.mkdir(exist_ok=True)
-		names = sorted(item.name for item in agent.workspace.state_root.glob("*.md"))
+		directory = agent.workspace.state_directory()
+		names = sorted(
+			item.name for item in directory.glob("*.md")
+			if not item.is_symlink()
+		)
 		return Result.ok(f"{len(names)} memory file(s)", files=names)
 	if mode not in ("read", "write"):
 		raise TulesError("'action_type' must be 'read', 'write' or 'list'")

@@ -33,6 +33,10 @@ class PageParser(HTMLParser):
 	"""Collect useful page structure while producing readable visible text."""
 
 	SKIPPED: ClassVar[Set[str]] = {"script", "style", "noscript", "template", "svg"}
+	VOID: ClassVar[Set[str]] = {
+		"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+		"param", "source", "track", "wbr",
+	}
 	BLOCKS: ClassVar[Set[str]] = {
 		"article",
 		"br",
@@ -68,7 +72,8 @@ class PageParser(HTMLParser):
 	def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
 		attributes = {key: value or "" for key, value in attrs}
 		entry: Dict[str, Any] = {"tag": tag, "attrs": attributes, "text": []}
-		self._stack.append(entry)
+		if tag not in self.VOID:
+			self._stack.append(entry)
 		if tag in self.SKIPPED:
 			self._skip_depth += 1
 		if tag in self.BLOCKS and not self._skip_depth:
@@ -80,7 +85,8 @@ class PageParser(HTMLParser):
 
 	def handle_startendtag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
 		self.handle_starttag(tag, attrs)
-		self.handle_endtag(tag)
+		if tag not in self.VOID:
+			self.handle_endtag(tag)
 
 	def handle_data(self, data: str) -> None:
 		if self._skip_depth:
@@ -98,7 +104,9 @@ class PageParser(HTMLParser):
 		if index < 0:
 			return
 		entry = self._stack[index]
+		closed = self._stack[index:]
 		del self._stack[index:]
+		self._skip_depth -= sum(1 for item in closed if item["tag"] in self.SKIPPED)
 		content = _clean_text("".join(entry["text"]))
 		attrs = entry["attrs"]
 		if tag == "title" and content:
@@ -114,8 +122,6 @@ class PageParser(HTMLParser):
 					"text": content,
 				}
 			)
-		if tag in self.SKIPPED and self._skip_depth:
-			self._skip_depth -= 1
 		if tag in self.BLOCKS and not self._skip_depth:
 			self.text_parts.append("\n")
 
@@ -225,7 +231,8 @@ def web_fetch(agent, payload: Dict[str, Any]) -> Result:
 	body, final_url, content_type, status = _request(url, _timeout(payload), max_bytes)
 	source = _decode(body, content_type)
 	parser = PageParser(final_url)
-	if "html" in content_type.lower() or "<html" in source[:1000].lower():
+	is_html = "html" in content_type.lower() or "<html" in source[:1000].lower()
+	if is_html:
 		parser.feed(source)
 	mode = text(payload, "mode", "text")
 	total_lines = None
@@ -247,11 +254,11 @@ def web_fetch(agent, payload: Dict[str, Any]) -> Result:
 		except json.JSONDecodeError as exc:
 			raise TulesError(f"Response is not valid JSON: {exc}") from exc
 	elif mode == "text":
-		page_text = parser.visible_text or source
+		page_text = parser.visible_text if is_html else source
 		lines = page_text.splitlines()
 		total_lines = len(lines)
 		first = number(payload, "start_line", 1)
-		last = number(payload, "end_line", min(len(lines), first + 499))
+		last = number(payload, "end_line", max(first, min(len(lines), first + 499)))
 		if first < 1 or last < first:
 			raise TulesError("Text line range must be positive and ordered")
 		content = "\n".join(lines[first - 1 : last])[:TEXT_LIMIT]
@@ -295,7 +302,11 @@ def _google_results(source: str) -> List[Dict[str, str]]:
 		parsed = urlparse(url)
 		if parsed.scheme not in ("http", "https") or not parsed.hostname:
 			continue
-		if parsed.hostname.endswith("google.com") or url in seen:
+		if (
+			parsed.hostname == "google.com"
+			or parsed.hostname.endswith(".google.com")
+			or url in seen
+		):
 			continue
 		seen.add(url)
 		results.append({"title": link["text"] or parsed.hostname, "url": url})

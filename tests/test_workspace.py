@@ -103,3 +103,53 @@ def test_max_backups_zero_disables_pruning(tmp_path):
 		target.write_text(f"x = {value}\n", encoding="utf-8")
 		space.back_up(target)
 	assert len(space.backups_of(target)) == 4
+
+
+def test_walk_and_grep_do_not_follow_file_symlinks_outside_workspace(tmp_path):
+	from tules.agent import Agent
+
+	root = tmp_path / "root"
+	root.mkdir()
+	secret = tmp_path / "secret.py"
+	secret.write_text("private_token\n")
+	(root / "linked.py").symlink_to(secret)
+	agent = Agent(str(root))
+	assert list(agent.workspace.walk()) == []
+	assert agent.run({"action": "grep", "pattern": "private_token"}).details["num_matches"] == 0
+	assert not agent.run({"action": "read", "file": "linked.py"}).success
+
+
+@pytest.mark.parametrize("name", [".tules", ".tules_backups"])
+def test_internal_directories_cannot_be_symlinks_outside_workspace(tmp_path, name):
+	from tules.agent import Agent
+
+	root = tmp_path / "root"
+	root.mkdir()
+	outside = tmp_path / "outside"
+	outside.mkdir()
+	(root / name).symlink_to(outside, target_is_directory=True)
+	(root / "sample.txt").write_text("original")
+	agent = Agent(str(root))
+	if name == ".tules":
+		result = agent.run({"action": "memory", "action_type": "write", "content": "hello"})
+		assert not agent.run({"action": "memory", "action_type": "list"}).success
+	else:
+		result = agent.run({"action": "write", "file": "sample.txt", "content": "changed"})
+		assert (root / "sample.txt").read_text() == "original"
+	assert not result.success
+	assert not list(outside.iterdir())
+
+
+def test_memory_file_symlink_cannot_escape_workspace(tmp_path):
+	from tules.agent import Agent
+
+	root = tmp_path / "root"
+	root.mkdir()
+	(root / ".tules").mkdir()
+	outside = tmp_path / "secret.md"
+	outside.write_text("secret")
+	(root / ".tules" / "scratchpad.md").symlink_to(outside)
+	agent = Agent(str(root))
+	assert not agent.run({"action": "memory", "action_type": "read"}).success
+	assert not agent.run({"action": "memory", "action_type": "write", "content": "bad"}).success
+	assert outside.read_text() == "secret"

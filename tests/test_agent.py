@@ -292,3 +292,14 @@ def test_debug_mode_returns_the_traceback_with_the_failure(agent, monkeypatch):
 	result = agent.run({"action": "list_actions"})
 	assert not result.success
 	assert "RuntimeError: boom" in result.details["traceback"]
+
+
+def test_replace_all_requires_a_json_boolean(agent):
+	path = agent.root / "duplicate.txt"
+	path.write_text("same same")
+	result = agent.run({
+		"action": "replace", "file": "duplicate.txt", "old_string": "same",
+		"new_string": "changed", "replace_all": "false",
+	})
+	assert not result.success
+	assert path.read_text() == "same same"
