@@ -120,7 +120,7 @@ class Workspace:
 		candidate = (self.root / relpath).expanduser()
 		try:
 			resolved = candidate.resolve()
-		except OSError as exc:
+		except (OSError, RuntimeError) as exc:
 			raise WorkspaceError(f"Invalid path {relpath!r}: {exc}") from exc
 		if resolved != self.root and self.root not in resolved.parents:
 			raise WorkspaceError(f"Path escapes the workspace: {relpath}")
@@ -141,6 +141,10 @@ class Workspace:
 			return str(path)
 
 	def includes(self, path: Path) -> bool:
+		try:
+			self.resolve(str(path))
+		except WorkspaceError:
+			return False
 		if path.suffix.lower() not in TEXT_SUFFIXES:
 			return False
 		try:
@@ -167,6 +171,7 @@ class Workspace:
 		return self.load_path(path, strict=strict)
 
 	def load_path(self, path: Path, strict: bool = True) -> Document:
+		self.resolve(str(path))
 		try:
 			raw = path.read_bytes()
 		except OSError as exc:
@@ -194,6 +199,7 @@ class Workspace:
 
 	def write_bytes(self, path: Path, data: bytes) -> None:
 		"""Atomically write arbitrary bytes and preserve existing permissions."""
+		path = self.resolve(str(path))
 		path.parent.mkdir(parents=True, exist_ok=True)
 		temporary: Optional[Path] = None
 		try:
@@ -216,12 +222,13 @@ class Workspace:
 	def back_up(self, path: Path) -> Path:
 		"""Copy a file to a unique timestamped backup, even after rapid edits."""
 		stamp = datetime.now().strftime(BACKUP_STAMP)
-		folder = self.backup_root / path.parent.relative_to(self.root)
+		path = self.resolve(str(path))
+		folder = self.resolve(str(self.backup_root / path.parent.relative_to(self.root)))
 		folder.mkdir(parents=True, exist_ok=True)
 		existing = self._existing_backups(path)
 		counters = [counter for backup_stamp, counter, _ in existing if backup_stamp == stamp]
 		backup = folder / f"{path.stem}_{stamp}{path.suffix}"
-		if counters or backup.exists():
+		if counters or backup.exists() or backup.is_symlink():
 			# Never reuse a name pruned earlier this second: the counter walks
 			# forward past every backup this stamp has already produced, so the
 			# newest copy can never sort behind (and be pruned ahead of) an
@@ -230,7 +237,7 @@ class Workspace:
 			while True:
 				counter += 1
 				backup = folder / f"{path.stem}_{stamp}_{counter}{path.suffix}"
-				if not backup.exists():
+				if not backup.exists() and not backup.is_symlink():
 					break
 		try:
 			shutil.copy2(path, backup)
@@ -241,13 +248,14 @@ class Workspace:
 
 	def _existing_backups(self, path: Path) -> List[Tuple[str, int, Path]]:
 		"""Every backup of ``path`` as ``(stamp, counter, file)``, unordered."""
-		folder = self.backup_root / path.parent.relative_to(self.root)
+		path = self.resolve(str(path))
+		folder = self.resolve(str(self.backup_root / path.parent.relative_to(self.root)))
 		if not folder.is_dir():
 			return []
 		pattern = re.compile(rf"^{re.escape(path.stem)}_(\d{{8}}_\d{{6}})(?:_(\d+))?$")
 		found = []
 		for item in folder.iterdir():
-			if not item.is_file() or item.suffix != path.suffix:
+			if item.is_symlink() or not item.is_file() or item.suffix != path.suffix:
 				continue
 			match = pattern.match(item.stem)
 			if match:
@@ -278,6 +286,7 @@ class Workspace:
 		return [item for _, _, item in ordered]
 
 	def restore(self, path: Path) -> Path:
+		path = self.resolve(str(path))
 		backups = self.backups_of(path)
 		if not backups:
 			raise WorkspaceError(f"No backup found for {self.relativize(path)}")
@@ -289,10 +298,15 @@ class Workspace:
 			raise WorkspaceError(f"Cannot restore {self.relativize(path)}: {exc}") from exc
 		return latest
 
-	def state_file(self, name: str) -> Path:
-		"""Path to one of TULES' own notes, creating the state folder on demand."""
+	def state_directory(self) -> Path:
+		"""Create and return the confined directory for TULES' notes."""
+		path = self.resolve(str(self.state_root))
 		try:
-			self.state_root.mkdir(exist_ok=True)
+			path.mkdir(exist_ok=True)
 		except OSError as exc:
 			raise WorkspaceError(f"Cannot create {STATE_DIR}: {exc}") from exc
-		return self.state_root / name
+		return path
+
+	def state_file(self, name: str) -> Path:
+		"""Path to one of TULES' own notes, creating the state folder on demand."""
+		return self.resolve(str(self.state_directory() / name))

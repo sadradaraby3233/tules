@@ -63,3 +63,20 @@ def test_decode_reports_unparseable_input():
 	with pytest.raises(TulesError) as caught:
 		decode("{not json at all")
 	assert "Invalid JSON" in caught.value.message
+
+
+def test_carve_json_preserves_a_batch_with_surrounding_prose():
+	assert decode('commands: [{"action":"help"},{"action":"analyze"}] done') == [
+		{"action": "help"}, {"action": "analyze"}
+	]
+
+
+def test_repair_never_removes_commas_inside_strings():
+	assert decode('{"action":"help","note":"keep, }",}') == [
+		{"action": "help", "note": "keep, }"}
+	]
+
+
+def test_find_block_ignores_end_marker_in_json_string():
+	text = 'edit: {"action":"write","content":"before endedit after"} endedit'
+	assert decode(find_block(text))[0]["content"] == "before endedit after"

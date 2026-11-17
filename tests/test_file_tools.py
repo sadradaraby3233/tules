@@ -113,3 +113,15 @@ def test_notebook_edit_replaces_inserts_and_deletes(agent):
 			"edit_mode": "delete",
 		}
 	).success
+
+
+def test_read_continuation_escapes_filename_as_json(agent):
+	import json
+
+	name = 'quoted"name.txt'
+	(agent.root / name).write_text("one\ntwo\nthree")
+	result = agent.run({"action": "read_file", "file": name, "start_line": 1, "end_line": 1})
+	assert result.success
+	command = json.loads(result.details["next"].split("  (", 1)[0])
+	assert command == {"action": "read_file", "file": name, "start_line": 2}
+	assert agent.run(command).success

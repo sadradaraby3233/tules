@@ -1,7 +1,6 @@
 # TULES
 
-A local, model-independent coding tool framework controlled through the clipboard.
-
+A local, model-independent coding tool framework controlled through the clipboard. An [Android companion](android/README.md) is also available.
 TULES does not connect to an AI service. Any AI model that can produce the documented
 JSON commands can inspect and modify a local project through TULES:
 
@@ -392,16 +391,18 @@ edit:
 endedit
 ```
 
-All three allow only public HTTP(S) destinations: they reject credentials and
-private, local, or reserved addresses, validate redirects, enforce timeouts, and cap
-response sizes. Search parses Google's HTML and has no stability guarantee — when the
+All three check HTTP(S) destinations and redirects for credentials and private, local, or
+reserved addresses, enforce timeouts, and cap response sizes. These checks are not a network
+sandbox: DNS can change between validation and connection, and proxies can change routing.
+Do not rely on them to isolate untrusted commands from private networks. Search parses Google's HTML and has no stability guarantee — when the
 markup changes it returns fewer results or none, and `web_fetch` remains available.
 Full parameter reference is in [AI_TOOL_GUIDE.md](AI_TOOL_GUIDE.md).
 
 ## Safety model
 
-**Workspace confinement.** Paths resolve against the configured root. Escaping via `..`,
-absolute outside paths, or symlinks is rejected.
+**Workspace confinement.** Paths resolve against the configured root; escaping via `..`, absolute
+paths, or symlinks is rejected, including in searches, backups, and memory. These checks are not
+a sandbox against concurrent filesystem changes by another process; only use trusted workspaces.
 
 **Backups.** Files are copied under `.tules_backups/` before mutation, with mirrored
 directories and timestamped names; rapid edits in the same second get unique backups
@@ -495,5 +496,4 @@ When adding or changing an action:
 6. Run the complete test and lint suites.
 
 ## License
-
 See the repository license file for licensing terms.

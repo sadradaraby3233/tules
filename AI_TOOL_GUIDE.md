@@ -1179,7 +1179,9 @@ HTTP status, content type, byte count, and optional backup.
 All web actions reject URL credentials and private, loopback, link-local, multicast, and
 reserved destinations. Redirect targets receive the same checks. Responses have strict
 size and timeout limits. These protections reduce SSRF and accidental huge downloads;
-they do not make untrusted downloaded content safe to execute.
+they do not make untrusted downloaded content safe to execute. DNS may change between
+validation and connection, and proxies can change routing, so these checks are not a
+network sandbox for untrusted commands.
 
 ---
 
@@ -1265,7 +1267,9 @@ Backward-compatible shell action. It now routes through the deterministic Bash i
 ## 18. Workspace confinement
 
 Every file path is resolved against one configured workspace root. TULES rejects `..`,
-symlinks, or absolute paths that resolve outside that root. File scans skip common
+symlinks, or absolute paths that resolve outside that root, including in scans, backups,
+and memory. These checks are not a sandbox against concurrent filesystem changes by
+another process; only use trusted workspaces. File scans skip common
 irrelevant directories including:
 
 - `.git`, `.hg`, `.svn`,
